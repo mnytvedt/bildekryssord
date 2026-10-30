@@ -84,6 +84,11 @@ button.on { background:#059669; }
 
 <div class="layout">
 <div class="panel">
+  <label for="lang">Kryssordspråk</label>
+  <select id="lang">
+    <option value="no">🇳🇴 Norsk</option>
+    <option value="en">🇬🇧 English</option>
+  </select>
   <h2>⚡ Hurtig: tilfeldig emoji-kryssord</h2>
   <div class="row">
     <div><label for="rRows">Rader</label><input type="number" id="rRows" min="3" max="30" value="8"></div>
@@ -195,6 +200,8 @@ function syncControls() {
   $('rows').value = S.rows; $('cols').value = S.cols; $('fit').value = S.fit;
   $('showNums').checked = !!S.showNums;
   $('letterBank').value = S.letterBank || 'off';
+  $('lang').value = S.lang || 'no';
+  $('words').placeholder = isEN() ? 'ICE, ELEPHANT, SCHOOL, SUN, CAR' : 'IS, ELEFANT, SKOLE, SOL, BIL';
   $('useEmoji').checked = !!S.useEmoji;
   $('size').value = S.size; $('title').value = S.title; $('words').value = S.words || '';
   applySize();
@@ -395,7 +402,7 @@ document.addEventListener('keydown', e => {
 /* ---------- Emoji-forslag ---------- */
 const EMOJI = {
   IS:'🍦', SOL:'☀️', MÅNE:'🌙', STJERNE:'⭐', SKY:'☁️', REGN:'🌧️', SNØ:'❄️', VIND:'💨', REGNBUE:'🌈', LYN:'⚡', ILD:'🔥', VANN:'💧', FJELL:'⛰️', VULKAN:'🌋', STRAND:'🏖️', ØY:'🏝️',
-  HUND:'🐶', KATT:'🐱', MUS:'🐭', HAMSTER:'🐹', KANIN:'🐰', REV:'🦊', BJØRN:'🐻', PANDA:'🐼', KOALA:'🐨', TIGER:'🐯', LØVE:'🦁', KU:'🐮', GRIS:'🐷', FROSK:'🐸', APE:'🐵', HØNE:'🐔', KYLLING:'🐥', FUGL:'🐦', PINGVIN:'🐧', UGLE:'🦉', ANDE:'🦆', GÅS:'🪿', ØRN:'🦅', DUE:'🕊️', FLAMINGO:'🦩', PÅFUGL:'🦚', SLANGE:'🐍', SKILPADDE:'🐢', KROKODILLE:'🐊', DRAGE:'🐉', HVAL:'🐳', DELFIN:'🐬', FISK:'🐟', HAI:'🦈', BLÆKKSPRUT:'🐙', KREPS:'🦀', HUMMER:'🦞', REKE:'🦐', SNEGLE:'🐌', MARIHØNE:'🐞', BIE:'🐝', MAUR:'🐜', EDDERKOPP:'🕷️', SOMMERFUGL:'🦋', MARKER:'🐛', HEST:'🐴', ZEBRA:'🦓', GIRAFF:'🦒', ELEFANT:'🐘', NESEHORN:'🦏', KAMEL:'🐪', SAU:'🐑', GEIT:'🐐', ULV:'🐺', HJORT:'🦌', ELG:'🫎', ISBJØRN:'🐻‍❄️', EKORN:'🐿️', FLAGGERMUS:'🦇', DINOSAUR:'🦖',
+  HUND:'🐶', KATT:'🐱', MUS:'🐭', HAMSTER:'🐹', KANIN:'🐰', REV:'🦊', BJØRN:'🐻', PANDA:'🐼', KOALA:'🐨', TIGER:'🐯', LØVE:'🦁', KU:'🐮', GRIS:'🐷', FROSK:'🐸', APE:'🐵', HØNE:'🐔', KYLLING:'🐥', FUGL:'🐦', PINGVIN:'🐧', UGLE:'🦉', AND:'🦆', GÅS:'🪿', ØRN:'🦅', DUE:'🕊️', FLAMINGO:'🦩', PÅFUGL:'🦚', SLANGE:'🐍', SKILPADDE:'🐢', KROKODILLE:'🐊', DRAGE:'🐉', HVAL:'🐳', DELFIN:'🐬', FISK:'🐟', HAI:'🦈', BLÆKKSPRUT:'🐙', KREPS:'🦀', HUMMER:'🦞', REKE:'🦐', SNEGLE:'🐌', MARIHØNE:'🐞', BIE:'🐝', MAUR:'🐜', EDDERKOPP:'🕷️', SOMMERFUGL:'🦋', MARKER:'🐛', HEST:'🐴', ZEBRA:'🦓', SJIRAFF:'🦒', ELEFANT:'🐘', NESEHORN:'🦏', KAMEL:'🐪', SAU:'🐑', GEIT:'🐐', ULV:'🐺', HJORT:'🦌', ELG:'🫎', ISBJØRN:'🐻‍❄️', EKORN:'🐿️', FLAGGERMUS:'🦇', DINOSAUR:'🦖',
   EPLE:'🍎', PÆRE:'🍐', BANAN:'🍌', APPELSIN:'🍊', SITRON:'🍋', DRUE:'🍇', JORDBÆR:'🍓', BLÅBÆR:'🫐', KIRSEBÆR:'🍒', FERSKEN:'🍑', MELON:'🍉', ANANAS:'🍍', MANGO:'🥭', KIWI:'🥝', TOMAT:'🍅', GULROT:'🥕', POTET:'🥔', LØK:'🧅', MAIS:'🌽', PAPRIKA:'🫑', AGURK:'🥒', BROKKOLI:'🥦', SOPP:'🍄', BRØD:'🍞', OST:'🧀', EGG:'🥚', MELK:'🥛', KAKE:'🍰', KJEKS:'🍪', SJOKOLADE:'🍫', GODTERI:'🍬', PIZZA:'🍕', BURGER:'🍔', POMMES:'🍟', PØLSE:'🌭', PASTA:'🍝', SUPPE:'🍲', RIS:'🍚', HONNING:'🍯', KAFFE:'☕', TE:'🍵', JUICE:'🧃', POPCORN:'🍿', NØTT:'🥜',
   BIL:'🚗', BUSS:'🚌', TOG:'🚆', TRIKK:'🚋', FLY:'✈️', HELIKOPTER:'🚁', BÅT:'⛵', SKIP:'🚢', SYKKEL:'🚲', MOTORSYKKEL:'🏍️', TRAKTOR:'🚜', LASTEBIL:'🚚', BRANNBIL:'🚒', POLITIBIL:'🚓', AMBULANSE:'🚑', RAKETT:'🚀', UBÅT:'🚤', SPARKESYKKEL:'🛴',
   HUS:'🏠', SKOLE:'🏫', KIRKE:'⛪', SLOTT:'🏰', FYRTÅRN:'🗼', BRO:'🌉', TELT:'⛺', SYKEHUS:'🏥', BUTIKK:'🏪', FABRIKK:'🏭', DØR:'🚪', VINDU:'🪟', SENG:'🛏️', STOL:'🪑', SOFA:'🛋️', LAMPE:'💡', KLOKKE:'🕐', NØKKEL:'🔑', LÅS:'🔒', TOALETT:'🚽', DUSJ:'🚿', BADEKAR:'🛁', SPEIL:'🪞', KOPP:'☕', GLASS:'🥛', GAFFEL:'🍴', SKJE:'🥄', KNIV:'🔪', TALLERKEN:'🍽️', FLASKE:'🍼', STEKEPANNE:'🍳', PARAPLY:'☂️',
@@ -406,12 +413,27 @@ const EMOJI = {
   KART:'🗺️', FLAGG:'🏁', ANKER:'⚓', HAMMER:'🔨', SKRUTREKKER:'🪛', SAG:'🪚', SPADE:'🪣', SPANN:'🪣', STIGE:'🪜', MAGNET:'🧲', BOMBE:'💣', SVERD:'⚔️', SKJOLD:'🛡️', TELESKOP:'🔭', MIKROSKOP:'🔬', PLANET:'🪐', UFO:'🛸', STJERNEHIMMEL:'🌌', KALENDER:'📅', PENGER:'💰', MYNT:'🪙', POST:'📮', BREV:'✉️', PAKKE:'📦', SØPPEL:'🗑️', LYSPÆRE:'💡', BATTERI:'🔋', TELEFONKIOSK:'☎️', VARME:'🌡️', TERMOMETER:'🌡️', SNØMANN:'⛄', TANNBØRSTE:'🪥', SÅPE:'🧼', SVAMP:'🧽', KOST:'🧹'
 };
 const EMOJI_KEYS = Object.keys(EMOJI).sort((a, b) => b.length - a.length);
+const EMOJI_EN = {
+  SUN:'☀️', MOON:'🌙', STAR:'⭐', CLOUD:'☁️', RAIN:'🌧️', SNOW:'❄️', WIND:'💨', RAINBOW:'🌈', FIRE:'🔥', WATER:'💧', MOUNTAIN:'⛰️', VOLCANO:'🌋', BEACH:'🏖️', ISLAND:'🏝️', EARTH:'🌍',
+  DOG:'🐶', CAT:'🐱', MOUSE:'🐭', HAMSTER:'🐹', RABBIT:'🐰', FOX:'🦊', BEAR:'🐻', PANDA:'🐼', KOALA:'🐨', TIGER:'🐯', LION:'🦁', COW:'🐮', PIG:'🐷', FROG:'🐸', MONKEY:'🐵', HEN:'🐔', CHICK:'🐥', BIRD:'🐦', PENGUIN:'🐧', OWL:'🦉', DUCK:'🦆', GOOSE:'🪿', EAGLE:'🦅', DOVE:'🕊️', FLAMINGO:'🦩', PEACOCK:'🦚', SNAKE:'🐍', TURTLE:'🐢', CROCODILE:'🐊', DRAGON:'🐉', WHALE:'🐳', DOLPHIN:'🐬', FISH:'🐟', SHARK:'🦈', OCTOPUS:'🐙', CRAB:'🦀', LOBSTER:'🦞', SHRIMP:'🦐', SNAIL:'🐌', LADYBUG:'🐞', BEE:'🐝', ANT:'🐜', SPIDER:'🕷️', BUTTERFLY:'🦋', WORM:'🐛', HORSE:'🐴', ZEBRA:'🦓', GIRAFFE:'🦒', ELEPHANT:'🐘', RHINO:'🦏', CAMEL:'🐪', SHEEP:'🐑', GOAT:'🐐', WOLF:'🐺', DEER:'🦌', MOOSE:'🫎', SQUIRREL:'🐿️', BAT:'🦇', DINOSAUR:'🦖',
+  APPLE:'🍎', PEAR:'🍐', BANANA:'🍌', ORANGE:'🍊', LEMON:'🍋', GRAPES:'🍇', STRAWBERRY:'🍓', BLUEBERRY:'🫐', CHERRY:'🍒', PEACH:'🍑', MELON:'🍉', PINEAPPLE:'🍍', MANGO:'🥭', KIWI:'🥝', TOMATO:'🍅', CARROT:'🥕', POTATO:'🥔', ONION:'🧅', CORN:'🌽', PEPPER:'🫑', CUCUMBER:'🥒', BROCCOLI:'🥦', MUSHROOM:'🍄', BREAD:'🍞', CHEESE:'🧀', EGG:'🥚', MILK:'🥛', CAKE:'🍰', COOKIE:'🍪', CHOCOLATE:'🍫', CANDY:'🍬', PIZZA:'🍕', BURGER:'🍔', FRIES:'🍟', HOTDOG:'🌭', PASTA:'🍝', SOUP:'🍲', RICE:'🍚', HONEY:'🍯', COFFEE:'☕', TEA:'🍵', JUICE:'🧃', POPCORN:'🍿', NUT:'🥜', ICECREAM:'🍦',
+  CAR:'🚗', BUS:'🚌', TRAIN:'🚆', TRAM:'🚋', PLANE:'✈️', HELICOPTER:'🚁', BOAT:'⛵', SHIP:'🚢', BIKE:'🚲', MOTORBIKE:'🏍️', TRACTOR:'🚜', TRUCK:'🚚', AMBULANCE:'🚑', ROCKET:'🚀', SCOOTER:'🛴',
+  HOUSE:'🏠', SCHOOL:'🏫', CHURCH:'⛪', CASTLE:'🏰', BRIDGE:'🌉', TENT:'⛺', HOSPITAL:'🏥', SHOP:'🏪', FACTORY:'🏭', DOOR:'🚪', WINDOW:'🪟', BED:'🛏️', CHAIR:'🪑', SOFA:'🛋️', LAMP:'💡', CLOCK:'🕐', KEY:'🔑', LOCK:'🔒', TOILET:'🚽', SHOWER:'🚿', BATH:'🛁', MIRROR:'🪞', CUP:'☕', GLASS:'🥛', FORK:'🍴', SPOON:'🥄', KNIFE:'🔪', PLATE:'🍽️', BOTTLE:'🍼', UMBRELLA:'☂️',
+  TREE:'🌳', PALM:'🌴', FLOWER:'🌸', ROSE:'🌹', TULIP:'🌷', SUNFLOWER:'🌻', CACTUS:'🌵', LEAF:'🍃', GRASS:'🌱', STONE:'🪨',
+  BOOK:'📖', PEN:'🖊️', PENCIL:'✏️', SCISSORS:'✂️', RULER:'📏', BAG:'🎒', COMPUTER:'💻', PHONE:'📱', TV:'📺', CAMERA:'📷', RADIO:'📻', GUITAR:'🎸', PIANO:'🎹', DRUM:'🥁', VIOLIN:'🎻', TRUMPET:'🎺', MICROPHONE:'🎤', HEADPHONES:'🎧', MUSIC:'🎵', BALL:'⚽', FOOTBALL:'⚽', BASKETBALL:'🏀', TENNIS:'🎾', SKI:'⛷️', SKATE:'⛸️', TROPHY:'🏆', MEDAL:'🏅', DICE:'🎲', BALLOON:'🎈', GIFT:'🎁', LANTERN:'🏮',
+  HEART:'❤️', EYE:'👁️', EAR:'👂', NOSE:'👃', MOUTH:'👄', TONGUE:'👅', TOOTH:'🦷', HAND:'✋', FOOT:'🦶', BONE:'🦴', BRAIN:'🧠', BABY:'👶', CHILD:'🧒', MAN:'👨', WOMAN:'👩', BOY:'👦', GIRL:'👧', KING:'🤴', PRINCESS:'👸', TEACHER:'🧑‍🏫', DOCTOR:'🧑‍⚕️', FIREMAN:'🧑‍🚒', GHOST:'👻', WITCH:'🧙‍♀️', ROBOT:'🤖', FAIRY:'🧚',
+  HAT:'🎩', CAP:'🧢', SHOE:'👟', BOOT:'🥾', SOCK:'🧦', TROUSERS:'👖', DRESS:'👗', JACKET:'🧥', GLOVE:'🧤', SCARF:'🧣', GLASSES:'👓', CROWN:'👑', RING:'💍', MAP:'🗺️', FLAG:'🏁', ANCHOR:'⚓', HAMMER:'🔨', SAW:'🪚', LADDER:'🪜', MAGNET:'🧲', BOMB:'💣', SWORD:'⚔️', SHIELD:'🛡️', TELESCOPE:'🔭', PLANET:'🪐', UFO:'🛸', CALENDAR:'📅', MONEY:'💰', COIN:'🪙', LETTER:'✉️', PARCEL:'📦', BATTERY:'🔋', SNOWMAN:'⛄', SOAP:'🧼', SPONGE:'🧽', BROOM:'🧹'
+};
+const EMOJI_KEYS_EN = Object.keys(EMOJI_EN).sort((a, b) => b.length - a.length);
+const isEN = () => S.lang === 'en';
+const emojiDict = () => isEN() ? EMOJI_EN : EMOJI;
 function suggestEmoji(word) {
-  if (EMOJI[word]) return EMOJI[word];
-  const ends = ['ENE', 'ER', 'EN', 'ET', 'E', 'A', 'S'];
-  for (const e of ends) if (word.endsWith(e) && EMOJI[word.slice(0, -e.length)] && word.length - e.length >= 2) return EMOJI[word.slice(0, -e.length)];
-  for (const k of EMOJI_KEYS) if (k.length >= 3 && word.endsWith(k)) return EMOJI[k];
-  for (const k of EMOJI_KEYS) if (k.length >= 4 && word.startsWith(k)) return EMOJI[k];
+  const D = emojiDict(), K = isEN() ? EMOJI_KEYS_EN : EMOJI_KEYS;
+  if (D[word]) return D[word];
+  const ends = isEN() ? ['ES', 'S'] : ['ENE', 'ER', 'EN', 'ET', 'E', 'A', 'S'];
+  for (const e of ends) if (word.endsWith(e) && D[word.slice(0, -e.length)] && word.length - e.length >= 2) return D[word.slice(0, -e.length)];
+  for (const k of K) if (k.length >= 3 && word.endsWith(k)) return D[k];
+  for (const k of K) if (k.length >= 4 && word.startsWith(k)) return D[k];
   return '';
 }
 
@@ -550,12 +572,13 @@ function generateRandom() {
   const st = $('status');
   st.style.display = 'block';
 
-  const pool = Object.keys(EMOJI).filter(w => w.length >= 2 && w.length <= maxLen && /^[A-ZÆØÅ]+$/.test(w));
+  const D = emojiDict();
+  const pool = Object.keys(D).filter(w => w.length >= 2 && w.length <= maxLen && /^[A-ZÆØÅ]+$/.test(w));
   let best = null, bestScore = -1;
   const attempts = Math.max(30, Math.min(120, Math.round(6000 / (rows * cols) * 4)));
   for (let i = 0; i < attempts; i++) {
     const seenEmoji = new Set();
-    const order = shuffle(pool.slice()).filter(w => !seenEmoji.has(EMOJI[w]) && seenEmoji.add(EMOJI[w])).slice(0, 45);
+    const order = shuffle(pool.slice()).filter(w => !seenEmoji.has(D[w]) && seenEmoji.add(D[w])).slice(0, 45);
     order.sort((a, b) => (b.length > 5) - (a.length > 5) || Math.random() - .5);
     const res = tryLayout(order, lim);
     let letters = 0;
@@ -571,7 +594,7 @@ function generateRandom() {
   for (const v of best.cells.values()) {
     const cell = S.grid[v.pos[0] - best.r0 + offR][v.pos[1] - best.c0 + offC];
     if (v.t === 'letter') { cell.t = 'letter'; cell.letter = v.letter; cell.dirs = v.dirs; }
-    else { cell.t = 'clue'; cell.arrow = v.arrow; cell.word = v.word; cell.emoji = EMOJI[v.word]; }
+    else { cell.t = 'clue'; cell.arrow = v.arrow; cell.word = v.word; cell.emoji = D[v.word]; }
   }
   let n = 1;
   for (const row of S.grid) for (const cell of row) if (cell.t === 'clue') cell.num = String(n++);
@@ -631,6 +654,7 @@ $('btnHint').onclick = async () => {
   }
   render();
 };
+$('lang').onchange = e => { S.words = $('words').value; S.lang = e.target.value; syncControls(); save(); };
 $('letterBank').onchange = e => { S.letterBank = e.target.value; renderLetters(); save(); };
 $('showNums').onchange = e => { S.showNums = e.target.checked; render(); };
 $('fit').onchange = e => { S.fit = e.target.value; S.grid.forEach(r => r.forEach(c => c.fit = '')); render(); };
