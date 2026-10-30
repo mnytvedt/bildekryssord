@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bildekryssord</title>
+<style>
+:root { --primary:#4f46e5; --primary-hover:#4338ca; --border:#cbd5e1; --cell:64px; --bw:2px; }
+* { box-sizing: border-box; }
+body { font-family:'Segoe UI',Tahoma,sans-serif; background:#f1f5f9; color:#1e293b; margin:0; padding:16px; }
+header { text-align:center; margin-bottom:16px; }
+header h1 { color:var(--primary); margin:0 0 4px; }
+header p { color:#64748b; margin:0; }
+.layout { display:grid; grid-template-columns:340px 1fr; gap:16px; max-width:1400px; margin:0 auto; }
+@media (max-width:900px) { .layout { grid-template-columns:1fr; } }
+.panel, .workspace { background:#fff; border-radius:12px; padding:16px; box-shadow:0 2px 6px rgba(0,0,0,.1); }
+.panel h2 { font-size:1.05rem; margin:18px 0 8px; padding-bottom:6px; border-bottom:2px solid #f1f5f9; }
+.panel h2:first-child { margin-top:0; }
+label { display:block; font-weight:600; font-size:.85rem; margin:8px 0 4px; }
+textarea, input[type=text], input[type=number], select { width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; font-size:.95rem; }
+textarea { height:110px; resize:vertical; }
+button { background:var(--primary); color:#fff; border:none; padding:9px 12px; border-radius:8px; font-weight:600; cursor:pointer; margin-top:6px; font-size:.9rem; }
+button:hover { background:var(--primary-hover); }
+button.sec { background:#64748b; } button.sec:hover { background:#475569; }
+button.full { width:100%; }
+button.on { background:#059669; }
+.row { display:flex; gap:6px; flex-wrap:wrap; }
+.row > * { flex:1; min-width:0; }
+.status { margin-top:8px; font-size:.85rem; padding:8px; border-radius:6px; background:#f8fafc; border-left:3px solid var(--primary); display:none; }
+.status.warn { border-color:#e11d48; background:#fff1f2; }
+.hint { font-size:.8rem; color:#64748b; margin-top:8px; line-height:1.4; }
+.workspace { display:flex; flex-direction:column; align-items:center; overflow:auto; min-height:500px; }
+.toolbar { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:12px; }
+.toolbar button { margin:0; }
+#title { font-size:1.5rem; font-weight:700; text-align:center; border:none; border-bottom:2px dashed var(--border); max-width:600px; margin-bottom:12px; background:transparent; }
+#grid { display:grid; gap:0; padding:0 var(--bw) var(--bw) 0; }
+.cell.letter, .cell.clue { border:var(--bw) solid #334155; }
+.cell.blank { width:calc(var(--cell) - var(--bw)); height:calc(var(--cell) - var(--bw)); }
+.cell { width:var(--cell); height:var(--cell); position:relative; display:flex; align-items:center; justify-content:center; font-size:calc(var(--cell)*.5); font-weight:700; text-transform:uppercase; user-select:none; cursor:pointer; overflow:hidden; background:#fff; }
+.cell.blank { background:transparent; }
+.cell.blank.edit:hover { background:#e2e8f0; }
+.cell.clue { background:#fef9c3; }
+.cell.sel { outline:3px solid var(--primary); outline-offset:-3px; z-index:2; }
+.cell.dragover { outline:3px dashed #059669; outline-offset:-3px; }
+.cell img { position:absolute; inset:0; width:100%; height:100%; padding:2px; background:#fff; }
+.num { position:absolute; top:2px; left:2px; z-index:3; min-width:20px; height:20px; padding:0 4px; border-radius:10px; background:#fbbf24; color:#000; border:1px solid #b45309; font-size:.7rem; display:flex; align-items:center; justify-content:center; font-weight:800; }
+.arrow { position:absolute; z-index:3; font-size:.8rem; color:#b91c1c; background:rgba(255,255,255,.85); line-height:1; border-radius:3px; }
+.arrow.H { right:1px; top:50%; transform:translateY(-50%); }
+.arrow.V { bottom:1px; left:50%; transform:translateX(-50%); }
+.cell:has(.wordtxt) .arrow { z-index:1; background:none; opacity:.35; }
+.wordtxt { position:relative; z-index:2; width:100%; padding:0 4px; box-sizing:border-box; text-align:center; font-weight:700; text-transform:none; white-space:normal; overflow-wrap:normal; line-height:1.1; color:#1e293b; }
+.hints { margin-top:14px; font-size:1.05rem; line-height:1.6; align-self:flex-start; }
+.hints div { font-weight:600; }
+.letters { margin-top:14px; display:flex; flex-wrap:wrap; gap:6px; max-width:100%; }
+.letters span { min-width:34px; height:38px; padding:0 4px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; border:1.5px solid #334155; border-radius:6px; background:#fff; font-size:1.3rem; font-weight:700; cursor:pointer; user-select:none; }
+.letters span.used { color:#94a3b8; background:#f1f5f9; text-decoration:line-through; text-decoration-thickness:2px; }
+.modal { position:fixed; inset:0; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; z-index:100; }
+.modal .box { background:#fff; padding:18px; border-radius:12px; width:min(420px,90vw); box-shadow:0 10px 30px rgba(0,0,0,.3); }
+@media print { .modal { display:none; } }
+.emoji { font-size:calc(var(--cell)*.55); line-height:1; font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif; }
+.ph { color:#a16207; font-size:.7rem; font-weight:600; text-align:center; padding:0 3px; }
+.guess { color:#1d4ed8; }
+.answer { color:#0f172a; }
+.printonly { display:none; }
+@media print {
+  @page { size:A4 portrait; margin:12mm; }
+  body { background:#fff; padding:0; }
+  header, .panel, .toolbar { display:none !important; }
+  .layout { display:block; }
+  .workspace { box-shadow:none; padding:0; overflow:visible; min-height:0; }
+  #title { border:none; }
+  .cell.sel, .cell.dragover { outline:none; }
+  .ph { display:none; }
+  .cell.blank.edit:hover { background:transparent; }
+  * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bildekryssord</h1>
+  <p>Skriv inn en ordliste, generer kryssord, og lim inn bilder i bilderutene.</p>
+</header>
+
+<div class="layout">
+<div class="panel">
+  <h2>⚡ Hurtig: tilfeldig emoji-kryssord</h2>
+  <div class="row">
+    <div><label for="rRows">Rader</label><input type="number" id="rRows" min="3" max="30" value="8"></div>
+    <div><label for="rCols">Kolonner</label><input type="number" id="rCols" min="3" max="30" value="8"></div>
+  </div>
+  <button class="full" id="btnRandom">🎲 Lag tilfeldig kryssord</button>
+  <div class="hint">Velger tilfeldige ord med emoji som passer i rutenettet. Trykk igjen for et nytt kryssord.</div>
+
+  <h2>1. Ordliste</h2>
+  <label for="words">Ord (komma, mellomrom eller linjeskift)</label>
+  <textarea id="words" placeholder="IS, ELEFANT, SKOLE, SOL, BIL"></textarea>
+  <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="useEmoji" checked> Foreslå emoji som bilde</label>
+  <button class="full" id="btnGen">⚡ Generer kryssord</button>
+  <button class="full sec" id="btnRegen">🔀 Prøv nytt mønster</button>
+  <div class="status" id="status"></div>
+
+  <h2>2. Bilder</h2>
+  <div class="hint" style="margin-top:0">Klikk en bilderute (gul), og lim inn med <b>Ctrl+V</b>, dra en bildefil oppå ruten, eller last opp:</div>
+  <button class="full" id="btnPaste">📋 Lim inn bilde fra utklippstavle</button>
+  <input type="file" id="file" accept="image/*" style="margin-top:6px;width:100%">
+  <div class="row">
+    <button class="sec" id="btnRemoveImg">Fjern bilde</button>
+    <button class="sec" id="btnFitCell">Tilpass / fyll (valgt)</button>
+  </div>
+  <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="showNums"> Vis nummer på bilderutene</label>
+  <label for="letterBank">Bokstavhjelp under kryssordet</label>
+  <select id="letterBank">
+    <option value="off">Av</option>
+    <option value="upper">Store bokstaver</option>
+    <option value="lower">Små bokstaver</option>
+  </select>
+  <label for="fit">Bildevisning for alle</label>
+  <select id="fit">
+    <option value="contain">Tilpass – se hele bildet</option>
+    <option value="cover">Fyll ruten – beskjær</option>
+  </select>
+
+  <h2>3. Valgt rute</h2>
+  <div class="row">
+    <button class="sec" id="btnLetter">Bokstav</button>
+    <button class="sec" id="btnClue">Bilderute</button>
+    <button class="sec" id="btnBlank">Tom</button>
+  </div>
+  <div class="row">
+    <button class="sec" id="btnArrow">Pil: ingen</button>
+    <button class="sec" id="btnNum">Sett nummer</button>
+  </div>
+  <div class="row">
+    <button class="sec" id="btnEmoji">Endre emoji</button>
+    <button class="sec" id="btnEmojiOff">Fjern emoji</button>
+  </div>
+  <div class="row">
+    <button class="sec" id="btnText">Skriv synonym</button>
+    <button class="sec" id="btnHint">Hint</button>
+  </div>
+  <div class="hint">Skriv bokstaver med tastaturet (lærervisning = fasit). Piltaster flytter markering.</div>
+
+  <h2>4. Rutenett</h2>
+  <div class="row">
+    <div><label for="rows">Rader</label><input type="number" id="rows" min="2" max="40" value="8"></div>
+    <div><label for="cols">Kolonner</label><input type="number" id="cols" min="2" max="40" value="10"></div>
+  </div>
+  <button class="full sec" id="btnNew">Nytt tomt rutenett</button>
+  <label for="size">Rutestørrelse</label>
+  <input type="range" id="size" min="36" max="110" value="64" style="width:100%">
+  <div class="row">
+    <button class="sec" id="btnSave">💾 Lagre fil</button>
+    <button class="sec" id="btnLoad">📂 Åpne fil</button>
+  </div>
+  <input type="file" id="loadFile" accept="application/json" style="display:none">
+  <div class="hint">Arbeidet lagres automatisk i nettleseren.</div>
+</div>
+
+<div class="workspace">
+  <div class="toolbar">
+    <button id="btnStudent">👩‍🎓 Elevvisning</button>
+    <button id="btnTeacher" class="sec">👩‍🏫 Lærervisning (fasit)</button>
+    <button class="sec" onclick="window.print()">🖨️ Skriv ut A4 / PDF</button>
+  </div>
+  <input type="text" id="title" placeholder="Tittel på kryssordet">
+  <div id="grid"></div>
+  <div id="hints" class="hints"></div>
+  <div id="letters" class="letters"></div>
+</div>
+</div>
+
+<script>
+const MAXIMG = 400;
+const S = { showNums: false, useEmoji: true, rows: 8, cols: 10, grid: [], fit: 'contain', view: 'student', title: '', size: 64, words: '' };
+let sel = null, typeDir = 'H', lastWords = [];
+
+const $ = id => document.getElementById(id);
+const blankCell = () => ({ t: 'blank', letter: '', guess: '', img: '', num: '', arrow: '', fit: '', dirs: [], word: '', emoji: '', text: '', hint: '' });
+const makeGrid = (r, c) => Array.from({ length: r }, () => Array.from({ length: c }, blankCell));
+const isTeacher = () => S.view === 'teacher';
+
+/* ---------- Lagring ---------- */
+function save() {
+  try { localStorage.setItem('bildekryssord-v1', JSON.stringify(S)); }
+  catch (e) { $('status').className = 'status warn'; $('status').style.display = 'block'; $('status').textContent = 'Kunne ikke lagre automatisk (for mange/store bilder). Bruk «Lagre fil».'; }
+}
+function applyState(o) {
+  Object.assign(S, o);
+  S.grid = S.grid.map(row => row.map(c => Object.assign(blankCell(), c)));
+  S.rows = S.grid.length; S.cols = S.grid[0].length;
+  syncControls(); render();
+}
+function syncControls() {
+  $('rows').value = S.rows; $('cols').value = S.cols; $('fit').value = S.fit;
+  $('showNums').checked = !!S.showNums;
+  $('letterBank').value = S.letterBank || 'off';
+  $('useEmoji').checked = !!S.useEmoji;
+  $('size').value = S.size; $('title').value = S.title; $('words').value = S.words || '';
+  applySize();
+  $('btnStudent').className = isTeacher() ? 'sec' : 'on';
+  $('btnTeacher').className = isTeacher() ? 'on' : 'sec';
+}
+
+/* Rute- og linjestørrelse i hele skjermpiksler, ellers avrundes linjene ulikt ved zoom/skalering */
+function applySize() {
+  const dpr = window.devicePixelRatio || 1;
+  const cellPx = Math.max(20, Math.round(S.size * dpr));
+  const bwPx = Math.max(1, Math.round(1.5 * dpr));
+  const root = document.documentElement.style;
+  root.setProperty('--cell', (cellPx / dpr) + 'px');
+  root.setProperty('--bw', (bwPx / dpr) + 'px');
+  if (typeof fitTexts === 'function') fitTexts();
+}
+window.addEventListener('resize', applySize);
+
+/* ---------- Visning ---------- */
+function render() {
+  const g = $('grid');
+  g.innerHTML = '';
+  g.style.gridTemplateColumns = `repeat(${S.cols}, calc(var(--cell) - var(--bw)))`;
+  g.style.gridTemplateRows = `repeat(${S.rows}, calc(var(--cell) - var(--bw)))`;
+  for (let r = 0; r < S.rows; r++) for (let c = 0; c < S.cols; c++) {
+    const cell = S.grid[r][c];
+    const d = document.createElement('div');
+    d.className = 'cell ' + cell.t + (cell.t === 'blank' && !isTeacher() ? '' : ' edit') + (sel && sel.r === r && sel.c === c ? ' sel' : '');
+    if (cell.t === 'blank' && !isTeacher()) d.classList.remove('edit');
+    if (cell.t === 'clue') {
+      if (cell.img) {
+        const im = document.createElement('img');
+        im.src = cell.img; im.draggable = false;
+        im.style.objectFit = cell.fit || S.fit;
+        d.appendChild(im);
+      } else if (cell.text) {
+        const tx = document.createElement('div');
+        tx.className = 'wordtxt'; tx.textContent = cell.text;
+        d.appendChild(tx);
+      } else if (cell.emoji) {
+        const em = document.createElement('div');
+        em.className = 'emoji'; em.textContent = cell.emoji;
+        d.appendChild(em);
+      } else {
+        const p = document.createElement('div');
+        p.className = 'ph'; p.textContent = '🖼 Ctrl+V';
+        d.appendChild(p);
+      }
+      if (cell.num && (S.showNums || cell.hint)) { const n = document.createElement('span'); n.className = 'num'; n.textContent = cell.num; d.appendChild(n); }
+      if (cell.arrow) { const a = document.createElement('span'); a.className = 'arrow ' + cell.arrow; a.textContent = cell.arrow === 'H' ? '▶' : '▼'; d.appendChild(a); }
+    } else if (cell.t === 'letter') {
+      const s = document.createElement('span');
+      if (isTeacher()) { s.className = 'answer'; s.textContent = cell.letter; }
+      else { s.className = 'guess'; s.textContent = cell.guess; }
+      d.appendChild(s);
+    }
+    d.onclick = () => { if (document.activeElement) document.activeElement.blur(); sel = { r, c }; if (cell.dirs.length === 1) typeDir = cell.dirs[0]; render(); updateSelUI(); };
+    d.ondragover = e => { e.preventDefault(); d.classList.add('dragover'); };
+    d.ondragleave = () => d.classList.remove('dragover');
+    d.ondrop = e => {
+      e.preventDefault(); d.classList.remove('dragover');
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f && f.type.startsWith('image/')) { sel = { r, c }; setImage(f); }
+    };
+    g.appendChild(d);
+  }
+  fitTexts();
+  renderHints();
+  renderLetters();
+  updateSelUI();
+  save();
+}
+
+/* Skalerer synonymer slik at hele ordet er synlig i ruten */
+function fitTexts() {
+  document.querySelectorAll('#grid .wordtxt').forEach(el => {
+    const box = el.parentElement;
+    const maxH = box.clientHeight - 8;
+    let fs = Math.min(box.clientHeight * 0.34, 40);
+    el.style.fontSize = fs + 'px';
+    while (fs > 3 && (el.scrollWidth > el.clientWidth + 0.5 || el.scrollHeight > maxH)) {
+      fs -= 0.5;
+      el.style.fontSize = fs + 'px';
+    }
+  });
+}
+function renderLetters() {
+  const box = $('letters');
+  box.innerHTML = '';
+  if (!S.letterBank || S.letterBank === 'off') return;
+  const ls = S.grid.flat().filter(c => c.t === 'letter' && c.letter).map(c => c.letter.toLocaleUpperCase('nb'));
+  ls.sort((a, b) => a.localeCompare(b, 'nb'));
+  ls.forEach(l => {
+    const s = document.createElement('span');
+    s.textContent = S.letterBank === 'lower' ? l.toLocaleLowerCase('nb') : l;
+    s.onclick = () => s.classList.toggle('used');
+    box.appendChild(s);
+  });
+}
+function renderHints() {
+  const box = $('hints');
+  const list = S.grid.flat().filter(c => c.t === 'clue' && c.hint && c.num)
+    .sort((a, b) => parseInt(a.num) - parseInt(b.num) || String(a.num).localeCompare(String(b.num)));
+  box.innerHTML = '';
+  list.forEach(c => {
+    const p = document.createElement('div');
+    p.textContent = c.num + ': ' + c.hint;
+    box.appendChild(p);
+  });
+}
+function updateSelUI() {
+  const cell = selCell();
+  $('btnArrow').textContent = 'Pil: ' + (!cell || !cell.arrow ? 'ingen' : cell.arrow === 'H' ? '→' : '↓');
+}
+const selCell = () => (sel && S.grid[sel.r] && S.grid[sel.r][sel.c]) || null;
+
+/* ---------- Bilder ---------- */
+function setImage(blob) {
+  const cell = selCell();
+  if (!cell) { alert('Klikk på en rute først.'); return; }
+  const url = URL.createObjectURL(blob);
+  const im = new Image();
+  im.onload = () => {
+    const k = Math.min(1, MAXIMG / Math.max(im.width, im.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+    const ctx = cv.getContext('2d');
+    const png = blob.type === 'image/png' || blob.type === 'image/gif' || blob.type === 'image/svg+xml';
+    if (!png) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    ctx.drawImage(im, 0, 0, cv.width, cv.height);
+    cell.img = cv.toDataURL(png ? 'image/png' : 'image/jpeg', 0.85);
+    cell.t = 'clue';
+    URL.revokeObjectURL(url);
+    render();
+  };
+  im.onerror = () => { URL.revokeObjectURL(url); alert('Kunne ikke lese bildet.'); };
+  im.src = url;
+}
+function pasteBlob(e) {
+  const cd = e.clipboardData;
+  if (!cd) return null;
+  for (const f of cd.files || []) if (f.type.startsWith('image/')) return f;
+  for (const it of cd.items || []) if (it.kind === 'file' && it.type.startsWith('image/')) return it.getAsFile();
+  return null;
+}
+document.addEventListener('paste', e => {
+  const blob = pasteBlob(e);
+  if (!blob) return;
+  e.preventDefault();
+  if (!selCell()) { alert('Klikk først på en rute, og lim deretter inn bildet.'); return; }
+  setImage(blob);
+}, true);
+$('btnPaste').onclick = async () => {
+  if (!selCell()) { alert('Klikk først på en rute.'); return; }
+  try {
+    for (const it of await navigator.clipboard.read()) {
+      const type = it.types.find(t => t.startsWith('image/'));
+      if (type) { setImage(await it.getType(type)); return; }
+    }
+    alert('Fant ikke noe bilde på utklippstavlen.');
+  } catch (err) {
+    alert('Nettleseren tillot ikke tilgang til utklippstavlen. Klikk på ruten og trykk Ctrl+V, eller bruk «Velg fil».');
+  }
+};
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+/* ---------- Tastatur ---------- */
+document.addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  const cell = selCell();
+  if (!cell) return;
+  const mv = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], ArrowUp: [-1, 0] }[e.key];
+  if (mv) {
+    e.preventDefault();
+    const r = sel.r + mv[0], c = sel.c + mv[1];
+    if (r >= 0 && r < S.rows && c >= 0 && c < S.cols) { sel = { r, c }; render(); }
+    return;
+  }
+  const field = isTeacher() ? 'letter' : 'guess';
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    if (cell.t === 'letter') { cell[field] = ''; render(); }
+    return;
+  }
+  if (e.key.length === 1 && /\p{L}/u.test(e.key)) {
+    e.preventDefault();
+    if (cell.t === 'blank' && isTeacher()) cell.t = 'letter';
+    if (cell.t !== 'letter') return;
+    cell[field] = e.key.toUpperCase();
+    const dr = typeDir === 'V' ? 1 : 0, dc = typeDir === 'H' ? 1 : 0;
+    const r = sel.r + dr, c = sel.c + dc;
+    if (r < S.rows && c < S.cols && S.grid[r][c].t === 'letter') sel = { r, c };
+    render();
+  }
+});
+
+/* ---------- Emoji-forslag ---------- */
+const EMOJI = {
+  IS:'🍦', SOL:'☀️', MÅNE:'🌙', STJERNE:'⭐', SKY:'☁️', REGN:'🌧️', SNØ:'❄️', VIND:'💨', REGNBUE:'🌈', LYN:'⚡', ILD:'🔥', VANN:'💧', FJELL:'⛰️', VULKAN:'🌋', STRAND:'🏖️', ØY:'🏝️',
+  HUND:'🐶', KATT:'🐱', MUS:'🐭', HAMSTER:'🐹', KANIN:'🐰', REV:'🦊', BJØRN:'🐻', PANDA:'🐼', KOALA:'🐨', TIGER:'🐯', LØVE:'🦁', KU:'🐮', GRIS:'🐷', FROSK:'🐸', APE:'🐵', HØNE:'🐔', KYLLING:'🐥', FUGL:'🐦', PINGVIN:'🐧', UGLE:'🦉', ANDE:'🦆', GÅS:'🪿', ØRN:'🦅', DUE:'🕊️', FLAMINGO:'🦩', PÅFUGL:'🦚', SLANGE:'🐍', SKILPADDE:'🐢', KROKODILLE:'🐊', DRAGE:'🐉', HVAL:'🐳', DELFIN:'🐬', FISK:'🐟', HAI:'🦈', BLÆKKSPRUT:'🐙', KREPS:'🦀', HUMMER:'🦞', REKE:'🦐', SNEGLE:'🐌', MARIHØNE:'🐞', BIE:'🐝', MAUR:'🐜', EDDERKOPP:'🕷️', SOMMERFUGL:'🦋', MARKER:'🐛', HEST:'🐴', ZEBRA:'🦓', GIRAFF:'🦒', ELEFANT:'🐘', NESEHORN:'🦏', KAMEL:'🐪', SAU:'🐑', GEIT:'🐐', ULV:'🐺', HJORT:'🦌', ELG:'🫎', ISBJØRN:'🐻‍❄️', EKORN:'🐿️', FLAGGERMUS:'🦇', DINOSAUR:'🦖',
+  EPLE:'🍎', PÆRE:'🍐', BANAN:'🍌', APPELSIN:'🍊', SITRON:'🍋', DRUE:'🍇', JORDBÆR:'🍓', BLÅBÆR:'🫐', KIRSEBÆR:'🍒', FERSKEN:'🍑', MELON:'🍉', ANANAS:'🍍', MANGO:'🥭', KIWI:'🥝', TOMAT:'🍅', GULROT:'🥕', POTET:'🥔', LØK:'🧅', MAIS:'🌽', PAPRIKA:'🫑', AGURK:'🥒', BROKKOLI:'🥦', SOPP:'🍄', BRØD:'🍞', OST:'🧀', EGG:'🥚', MELK:'🥛', KAKE:'🍰', KJEKS:'🍪', SJOKOLADE:'🍫', GODTERI:'🍬', PIZZA:'🍕', BURGER:'🍔', POMMES:'🍟', PØLSE:'🌭', PASTA:'🍝', SUPPE:'🍲', RIS:'🍚', HONNING:'🍯', KAFFE:'☕', TE:'🍵', JUICE:'🧃', POPCORN:'🍿', NØTT:'🥜',
+  BIL:'🚗', BUSS:'🚌', TOG:'🚆', TRIKK:'🚋', FLY:'✈️', HELIKOPTER:'🚁', BÅT:'⛵', SKIP:'🚢', SYKKEL:'🚲', MOTORSYKKEL:'🏍️', TRAKTOR:'🚜', LASTEBIL:'🚚', BRANNBIL:'🚒', POLITIBIL:'🚓', AMBULANSE:'🚑', RAKETT:'🚀', UBÅT:'🚤', SPARKESYKKEL:'🛴',
+  HUS:'🏠', SKOLE:'🏫', KIRKE:'⛪', SLOTT:'🏰', FYRTÅRN:'🗼', BRO:'🌉', TELT:'⛺', SYKEHUS:'🏥', BUTIKK:'🏪', FABRIKK:'🏭', DØR:'🚪', VINDU:'🪟', SENG:'🛏️', STOL:'🪑', SOFA:'🛋️', LAMPE:'💡', KLOKKE:'🕐', NØKKEL:'🔑', LÅS:'🔒', TOALETT:'🚽', DUSJ:'🚿', BADEKAR:'🛁', SPEIL:'🪞', KOPP:'☕', GLASS:'🥛', GAFFEL:'🍴', SKJE:'🥄', KNIV:'🔪', TALLERKEN:'🍽️', FLASKE:'🍼', STEKEPANNE:'🍳', PARAPLY:'☂️',
+  TRE:'🌳', GRAN:'🌲', PALME:'🌴', BLOMST:'🌸', ROSE:'🌹', TULIPAN:'🌷', SOLSIKKE:'🌻', KAKTUS:'🌵', BLAD:'🍃', GRESS:'🌱', JORD:'🌍', STEIN:'🪨', KLODE:'🌍',
+  BOK:'📖', PENN:'🖊️', BLYANT:'✏️', SAKS:'✂️', LINJAL:'📏', TAVLE:'🧑‍🏫', BAG:'🎒', PC:'💻', DATAMASKIN:'💻', TELEFON:'📱', MOBIL:'📱', TV:'📺', KAMERA:'📷', RADIO:'📻', GITAR:'🎸', PIANO:'🎹', TROMME:'🥁', FIOLIN:'🎻', TRØMPET:'🎺', MIKROFON:'🎤', HODETELEFONER:'🎧', NOTE:'🎵', BALL:'⚽', FOTBALL:'⚽', BASKETBALL:'🏀', TENNIS:'🎾', SKI:'⛷️', SKØYTE:'⛸️', PREMIE:'🏆', MEDALJE:'🏅', TERNING:'🎲', BALLONG:'🎈', GAVE:'🎁', JULETRE:'🎄', LYKTE:'🏮',
+  HJERTE:'❤️', ØYE:'👁️', ØRE:'👂', NESE:'👃', MUNN:'👄', TUNGE:'👅', TANN:'🦷', HÅND:'✋', FOT:'🦶', BEIN:'🦴', HJERNE:'🧠', BABY:'👶', BARN:'🧒', MANN:'👨', KVINNE:'👩', GUTT:'👦', JENTE:'👧', KONGE:'🤴', PRINSESSE:'👸', LÆRER:'🧑‍🏫', LEGE:'🧑‍⚕️', BRANNMANN:'🧑‍🚒', SPØKELSE:'👻', HEKS:'🧙‍♀️', ROBOT:'🤖', FE:'🧚',
+  HATT:'🎩', LUE:'🧢', SKO:'👟', STØVEL:'🥾', SOKK:'🧦', BUKSE:'👖', KJOLE:'👗', GENSER:'🧶', JAKKE:'🧥', VOTT:'🧤', SKJERF:'🧣', BRILLER:'👓', KRONE:'👑', RING:'💍', VESKE:'👜',
+  KART:'🗺️', FLAGG:'🏁', ANKER:'⚓', HAMMER:'🔨', SKRUTREKKER:'🪛', SAG:'🪚', SPADE:'🪣', SPANN:'🪣', STIGE:'🪜', MAGNET:'🧲', BOMBE:'💣', SVERD:'⚔️', SKJOLD:'🛡️', TELESKOP:'🔭', MIKROSKOP:'🔬', PLANET:'🪐', UFO:'🛸', STJERNEHIMMEL:'🌌', KALENDER:'📅', PENGER:'💰', MYNT:'🪙', POST:'📮', BREV:'✉️', PAKKE:'📦', SØPPEL:'🗑️', LYSPÆRE:'💡', BATTERI:'🔋', TELEFONKIOSK:'☎️', VARME:'🌡️', TERMOMETER:'🌡️', SNØMANN:'⛄', TANNBØRSTE:'🪥', SÅPE:'🧼', SVAMP:'🧽', KOST:'🧹'
+};
+const EMOJI_KEYS = Object.keys(EMOJI).sort((a, b) => b.length - a.length);
+function suggestEmoji(word) {
+  if (EMOJI[word]) return EMOJI[word];
+  const ends = ['ENE', 'ER', 'EN', 'ET', 'E', 'A', 'S'];
+  for (const e of ends) if (word.endsWith(e) && EMOJI[word.slice(0, -e.length)] && word.length - e.length >= 2) return EMOJI[word.slice(0, -e.length)];
+  for (const k of EMOJI_KEYS) if (k.length >= 3 && word.endsWith(k)) return EMOJI[k];
+  for (const k of EMOJI_KEYS) if (k.length >= 4 && word.startsWith(k)) return EMOJI[k];
+  return '';
+}
+
+/* ---------- Generator ---------- */
+function parseWords(text) {
+  const seen = new Set();
+  return text.split(/[\s,;]+/).map(w => w.toUpperCase().replace(/[^A-ZÆØÅ0-9]/g, '')).filter(w => w && !seen.has(w) && seen.add(w));
+}
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const DIR = { H: [0, 1], V: [1, 0] };
+
+function tryLayout(order, lim) {
+  const cells = new Map(), placed = [];
+  const key = (r, c) => r + ',' + c;
+  let bR0 = 1e9, bR1 = -1e9, bC0 = 1e9, bC1 = -1e9;
+
+  const fits = (w, r, c, dir) => {
+    if (!lim) return true;
+    const [dr, dc] = DIR[dir];
+    const r0 = Math.min(bR0, r - dr), r1 = Math.max(bR1, r + dr * (w.length - 1));
+    const c0 = Math.min(bC0, c - dc), c1 = Math.max(bC1, c + dc * (w.length - 1));
+    return r1 - r0 + 1 <= lim.rows && c1 - c0 + 1 <= lim.cols;
+  };
+  const check = (w, r, c, dir) => {
+    const [dr, dc] = DIR[dir];
+    if (cells.has(key(r - dr, c - dc))) return -1;
+    if (!fits(w, r, c, dir)) return -1;
+    const after = cells.get(key(r + dr * w.length, c + dc * w.length));
+    if (after && after.t === 'letter') return -1;
+    let cross = 0;
+    for (let i = 0; i < w.length; i++) {
+      const rr = r + dr * i, cc = c + dc * i, ex = cells.get(key(rr, cc));
+      if (ex) {
+        if (ex.t !== 'letter' || ex.letter !== w[i] || ex.dirs.includes(dir)) return -1;
+        cross++;
+      } else {
+        const a = cells.get(key(rr + dc, cc + dr)), b = cells.get(key(rr - dc, cc - dr));
+        if ((a && a.t === 'letter') || (b && b.t === 'letter')) return -1;
+      }
+    }
+    return cross;
+  };
+  const put = (w, r, c, dir) => {
+    const [dr, dc] = DIR[dir];
+    cells.set(key(r - dr, c - dc), { t: 'clue', arrow: dir, pos: [r - dr, c - dc], word: w });
+    for (let i = 0; i < w.length; i++) {
+      const k = key(r + dr * i, c + dc * i), ex = cells.get(k);
+      if (ex) ex.dirs.push(dir);
+      else cells.set(k, { t: 'letter', letter: w[i], dirs: [dir], pos: [r + dr * i, c + dc * i] });
+    }
+    placed.push(w);
+    bR0 = Math.min(bR0, r - dr); bR1 = Math.max(bR1, r + dr * (w.length - 1));
+    bC0 = Math.min(bC0, c - dc); bC1 = Math.max(bC1, c + dc * (w.length - 1));
+  };
+
+  let first = 0;
+  if (lim) {
+    first = order.findIndex(w => w.length + 1 <= Math.max(lim.rows, lim.cols));
+    if (first < 0) return { cells, placed, unplaced: order.slice(), r0: 0, c0: 0, rows: 0, cols: 0 };
+  }
+  put(order[first], 0, 0, !lim || order[first].length + 1 <= lim.cols ? 'H' : 'V');
+  let pending = order.filter((_, i) => i !== first), progress = true;
+  while (progress && pending.length) {
+    progress = false;
+    for (const w of pending.slice()) {
+      let best = [], bestScore = 0;
+      for (const cell of cells.values()) {
+        if (cell.t !== 'letter') continue;
+        for (let i = 0; i < w.length; i++) if (w[i] === cell.letter) {
+          for (const dir of ['H', 'V']) {
+            if (cell.dirs.includes(dir)) continue;
+            const r = cell.pos[0] - DIR[dir][0] * i, c = cell.pos[1] - DIR[dir][1] * i;
+            const s = check(w, r, c, dir);
+            if (s < 1) continue;
+            if (s > bestScore) { bestScore = s; best = []; }
+            if (s === bestScore) best.push([r, c, dir]);
+          }
+        }
+      }
+      if (best.length) {
+        const [r, c, dir] = best[Math.floor(Math.random() * best.length)];
+        put(w, r, c, dir);
+        pending.splice(pending.indexOf(w), 1);
+        progress = true;
+      }
+    }
+  }
+  let r0 = 1e9, r1 = -1e9, c0 = 1e9, c1 = -1e9;
+  for (const v of cells.values()) { r0 = Math.min(r0, v.pos[0]); r1 = Math.max(r1, v.pos[0]); c0 = Math.min(c0, v.pos[1]); c1 = Math.max(c1, v.pos[1]); }
+  return { cells, placed, unplaced: pending, r0, c0, rows: r1 - r0 + 1, cols: c1 - c0 + 1 };
+}
+
+function generate() {
+  S.words = $('words').value;
+  const words = parseWords(S.words);
+  const st = $('status');
+  st.style.display = 'block';
+  if (!words.length) { st.className = 'status warn'; st.textContent = 'Skriv inn minst ett ord.'; return; }
+  lastWords = words;
+  let best = null, bestScore = -1e9;
+  const base = words.slice().sort((a, b) => b.length - a.length);
+  for (let i = 0; i < 300; i++) {
+    const order = i === 0 ? base : shuffle(words.slice());
+    const res = tryLayout(order);
+    const score = res.placed.length * 10000 - res.rows * res.cols - Math.abs(res.rows - res.cols) * 5;
+    if (score > bestScore) { bestScore = score; best = res; }
+  }
+  S.rows = best.rows; S.cols = best.cols;
+  S.grid = makeGrid(S.rows, S.cols);
+  for (const v of best.cells.values()) {
+    const cell = S.grid[v.pos[0] - best.r0][v.pos[1] - best.c0];
+    if (v.t === 'letter') { cell.t = 'letter'; cell.letter = v.letter; cell.dirs = v.dirs; }
+    else { cell.t = 'clue'; cell.arrow = v.arrow; cell.word = v.word; if (S.useEmoji) cell.emoji = suggestEmoji(v.word); }
+  }
+  const noEmoji = S.useEmoji ? S.grid.flat().filter(c => c.t === 'clue' && !c.emoji).map(c => c.word) : [];
+  let n = 1;
+  for (const row of S.grid) for (const cell of row) if (cell.t === 'clue') cell.num = String(n++);
+  sel = null;
+  syncControls(); render();
+  if (best.unplaced.length) {
+    st.className = 'status warn';
+    st.textContent = `${best.placed.length} av ${words.length} ord plassert. Ikke plassert (ingen felles bokstaver): ${best.unplaced.join(', ')}. Prøv nytt mønster eller endre ordlisten.`;
+  } else {
+    st.className = 'status';
+    st.textContent = `Alle ${words.length} ord er plassert. Rutenett: ${S.rows}×${S.cols}. Gule ruter er bilderuter – klikk og lim inn bilde.`;
+  }
+  if (S.useEmoji && noEmoji.length) st.textContent += ` Ingen emoji-forslag for: ${noEmoji.join(', ')}.`;
+}
+
+/* ---------- Tilfeldig emoji-kryssord ---------- */
+function generateRandom() {
+  const rows = Math.min(30, Math.max(3, +$('rRows').value || 8));
+  const cols = Math.min(30, Math.max(3, +$('rCols').value || 8));
+  const lim = { rows, cols };
+  const maxLen = Math.max(rows, cols) - 1;
+  const st = $('status');
+  st.style.display = 'block';
+
+  const pool = Object.keys(EMOJI).filter(w => w.length >= 2 && w.length <= maxLen && /^[A-ZÆØÅ]+$/.test(w));
+  let best = null, bestScore = -1;
+  const attempts = Math.max(30, Math.min(120, Math.round(6000 / (rows * cols) * 4)));
+  for (let i = 0; i < attempts; i++) {
+    const seenEmoji = new Set();
+    const order = shuffle(pool.slice()).filter(w => !seenEmoji.has(EMOJI[w]) && seenEmoji.add(EMOJI[w])).slice(0, 45);
+    order.sort((a, b) => (b.length > 5) - (a.length > 5) || Math.random() - .5);
+    const res = tryLayout(order, lim);
+    let letters = 0;
+    for (const v of res.cells.values()) if (v.t === 'letter') letters++;
+    const score = res.placed.length * 100 + letters;
+    if (res.placed.length && score > bestScore) { bestScore = score; best = res; }
+  }
+  if (!best) { st.className = 'status warn'; st.textContent = 'Fikk ikke plassert noen ord. Prøv et større rutenett.'; return; }
+
+  const offR = Math.floor((rows - best.rows) / 2), offC = Math.floor((cols - best.cols) / 2);
+  S.rows = rows; S.cols = cols;
+  S.grid = makeGrid(rows, cols);
+  for (const v of best.cells.values()) {
+    const cell = S.grid[v.pos[0] - best.r0 + offR][v.pos[1] - best.c0 + offC];
+    if (v.t === 'letter') { cell.t = 'letter'; cell.letter = v.letter; cell.dirs = v.dirs; }
+    else { cell.t = 'clue'; cell.arrow = v.arrow; cell.word = v.word; cell.emoji = EMOJI[v.word]; }
+  }
+  let n = 1;
+  for (const row of S.grid) for (const cell of row) if (cell.t === 'clue') cell.num = String(n++);
+  S.words = best.placed.join(', ');
+  sel = null;
+  syncControls(); render();
+  st.className = 'status';
+  st.textContent = `Tilfeldig kryssord ${rows}×${cols} med ${best.placed.length} ord og emoji. Bytt til lærervisning for å se fasit. Ordene står i ordlisten.`;
+}
+
+/* Enkel dialog som erstatter prompt() */
+function ask(label, value) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'modal';
+    ov.innerHTML = '<div class="box"><label></label><input type="text"><div class="row"><button class="sec" data-x="0">Avbryt</button><button data-x="1">OK</button></div></div>';
+    ov.querySelector('label').textContent = label;
+    const inp = ov.querySelector('input');
+    inp.value = value || '';
+    const done = v => { ov.remove(); resolve(v === null ? null : v.trim()); };
+    ov.querySelector('[data-x="0"]').onclick = () => done(null);
+    ov.querySelector('[data-x="1"]').onclick = () => done(inp.value);
+    ov.onclick = e => { if (e.target === ov) done(null); };
+    inp.onkeydown = e => { if (e.key === 'Enter') done(inp.value); else if (e.key === 'Escape') done(null); };
+    document.body.appendChild(ov);
+    inp.focus(); inp.select();
+  });
+}
+
+/* ---------- Knapper ---------- */
+$('btnRandom').onclick = generateRandom;
+$('btnGen').onclick = generate;
+$('btnRegen').onclick = generate;
+$('file').onchange = e => { if (e.target.files[0]) setImage(e.target.files[0]); e.target.value = ''; };
+$('btnRemoveImg').onclick = () => { const c = selCell(); if (c) { c.img = ''; render(); } };
+$('btnFitCell').onclick = () => { const c = selCell(); if (c) { c.fit = (c.fit || S.fit) === 'contain' ? 'cover' : 'contain'; render(); } };
+$('useEmoji').onchange = e => { S.useEmoji = e.target.checked; save(); };
+$('btnEmoji').onclick = async () => {
+  const c = selCell(); if (!c || c.t !== 'clue') { alert('Velg en bilderute først.'); return; }
+  const v = await ask('Emoji for ruten' + (c.word ? ' (' + c.word + ')' : '') + ' – skriv eller lim inn (Windows: Win + .)', c.emoji);
+  if (v !== null) { c.emoji = v; render(); }
+};
+$('btnEmojiOff').onclick = () => { const c = selCell(); if (c) { c.emoji = ''; render(); } };
+$('btnText').onclick = async () => {
+  const c = selCell(); if (!c || c.t !== 'clue') { alert('Velg en bilderute først.'); return; }
+  const v = await ask('Synonym/ord i ruten (tomt felt = fjern)', c.text);
+  if (v !== null) { c.text = v; render(); }
+};
+$('btnHint').onclick = async () => {
+  const c = selCell(); if (!c || c.t !== 'clue') { alert('Velg en bilderute først.'); return; }
+  const v = await ask('Hint for ruten – vises under kryssordet (tomt felt = fjern)', c.hint);
+  if (v === null) return;
+  c.hint = v;
+  if (c.hint && !c.num) {
+    const max = Math.max(0, ...S.grid.flat().map(x => parseInt(x.num) || 0));
+    c.num = String(max + 1);
+  }
+  render();
+};
+$('letterBank').onchange = e => { S.letterBank = e.target.value; renderLetters(); save(); };
+$('showNums').onchange = e => { S.showNums = e.target.checked; render(); };
+$('fit').onchange = e => { S.fit = e.target.value; S.grid.forEach(r => r.forEach(c => c.fit = '')); render(); };
+$('btnLetter').onclick = () => { const c = selCell(); if (c) { c.t = 'letter'; render(); } };
+$('btnClue').onclick = () => { const c = selCell(); if (c) { c.t = 'clue'; render(); } };
+$('btnBlank').onclick = () => { const c = selCell(); if (c) { Object.assign(c, blankCell()); render(); } };
+$('btnArrow').onclick = () => { const c = selCell(); if (c) { c.arrow = c.arrow === '' ? 'H' : c.arrow === 'H' ? 'V' : ''; render(); } };
+$('btnNum').onclick = async () => { const c = selCell(); if (c) { const v = await ask('Nummer for ruten (tomt felt = fjern)', c.num); if (v !== null) { c.num = v; render(); } } };
+$('btnNew').onclick = () => {
+  const r = Math.min(40, Math.max(2, +$('rows').value || 8)), c = Math.min(40, Math.max(2, +$('cols').value || 10));
+  if (!confirm('Dette tømmer hele rutenettet. Fortsette?')) return;
+  S.rows = r; S.cols = c; S.grid = makeGrid(r, c); sel = null; syncControls(); render();
+};
+$('size').oninput = e => { S.size = +e.target.value; applySize(); save(); };
+$('title').oninput = e => { S.title = e.target.value; save(); };
+$('words').oninput = e => { S.words = e.target.value; save(); };
+$('btnStudent').onclick = () => { S.view = 'student'; syncControls(); render(); };
+$('btnTeacher').onclick = () => { S.view = 'teacher'; syncControls(); render(); };
+$('btnSave').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' }));
+  a.download = (S.title || 'kryssord') + '.json';
+  a.click(); URL.revokeObjectURL(a.href);
+};
+$('btnLoad').onclick = () => $('loadFile').click();
+$('loadFile').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { try { applyState(JSON.parse(rd.result)); } catch (err) { alert('Ugyldig fil.'); } };
+  rd.readAsText(f); e.target.value = '';
+};
+
+/* ---------- Start ---------- */
+(function init() {
+  S.grid = makeGrid(S.rows, S.cols);
+  try { const s = localStorage.getItem('bildekryssord-v1'); if (s) { applyState(JSON.parse(s)); return; } } catch (e) {}
+  syncControls(); render();
+})();
+</script>
+</body>
+</html>
