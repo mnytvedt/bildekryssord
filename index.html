@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bildekryssord</title>
+<style id="print-page">@page { size:A4 portrait; margin:12mm; }</style>
 <style>
 :root { --primary:#4f46e5; --primary-hover:#4338ca; --border:#cbd5e1; --cell:64px; --bw:2px; }
 * { box-sizing: border-box; }
@@ -62,13 +63,27 @@ button.on { background:#059669; }
 .guess { color:#1d4ed8; }
 .answer { color:#0f172a; }
 .printonly { display:none; }
+body.preparing-print { background:#fff; padding:0; --cell:calc(var(--print-base-cell) * var(--print-scale)); --bw:calc(var(--print-base-bw) * var(--print-scale)); }
+body.preparing-print header, body.preparing-print .panel, body.preparing-print .toolbar { display:none !important; }
+body.preparing-print .layout { display:block; }
+body.preparing-print .workspace { box-shadow:none; padding:0; overflow:visible; min-height:0; }
+body.preparing-print #title { border:none; }
+body.preparing-print #grid { flex-shrink:0; }
+body.preparing-print #title { font-size:calc(1.5rem * var(--print-scale)); margin-bottom:calc(12px * var(--print-scale)); }
+body.preparing-print .hints { overflow-wrap:anywhere; font-size:calc(1.05rem * var(--print-scale)); margin-top:calc(14px * var(--print-scale)); }
+body.preparing-print .letters { gap:calc(6px * var(--print-scale)); margin-top:calc(14px * var(--print-scale)); }
+body.preparing-print .letters span { min-width:calc(34px * var(--print-scale)); height:calc(38px * var(--print-scale)); padding:0 calc(4px * var(--print-scale)); font-size:calc(1.3rem * var(--print-scale)); }
+body.preparing-print .num { min-width:calc(20px * var(--print-scale)); height:calc(20px * var(--print-scale)); padding:0 calc(4px * var(--print-scale)); font-size:calc(.7rem * var(--print-scale)); }
+body.preparing-print .arrow { font-size:calc(.8rem * var(--print-scale)); }
+body.preparing-print .wordtxt { padding:0 calc(4px * var(--print-scale)); }
 @media print {
-  @page { size:A4 portrait; margin:12mm; }
   body { background:#fff; padding:0; }
   header, .panel, .toolbar { display:none !important; }
   .layout { display:block; }
   .workspace { box-shadow:none; padding:0; overflow:visible; min-height:0; }
   #title { border:none; }
+  #grid { flex-shrink:0; }
+  .hints { overflow-wrap:anywhere; }
   .cell.sel, .cell.dragover { outline:none; }
   .ph { display:none; }
   .cell.blank.edit:hover { background:transparent; }
@@ -220,6 +235,60 @@ function applySize() {
   if (typeof fitTexts === 'function') fitTexts();
 }
 window.addEventListener('resize', applySize);
+
+/* Beregn største målestokk som gir plass til hele arbeidsarket på A4. */
+function preparePrint() {
+  const workspace = document.querySelector('.workspace');
+  const grid = $('grid');
+  const pxPerMm = 96 / 25.4;
+  const textSizes = Array.from(grid.querySelectorAll('.wordtxt'), el => [el, parseFloat(el.style.fontSize)]);
+  const rootStyle = getComputedStyle(document.documentElement);
+  document.body.style.setProperty('--print-base-cell', rootStyle.getPropertyValue('--cell'));
+  document.body.style.setProperty('--print-base-bw', rootStyle.getPropertyValue('--bw'));
+  document.body.classList.add('preparing-print');
+
+  function measure(orientation, scale) {
+    const landscape = orientation === 'landscape';
+    const width = ((landscape ? 297 : 210) - 24) * pxPerMm;
+    const height = ((landscape ? 210 : 297) - 24) * pxPerMm;
+    workspace.style.width = width + 'px';
+    document.body.style.setProperty('--print-scale', scale);
+    const content = workspace.getBoundingClientRect();
+    const gridRect = grid.getBoundingClientRect();
+    return gridRect.width <= width - 1 && content.height <= height - 1;
+  }
+
+  function bestScale(orientation) {
+    if (measure(orientation, 1)) return 1;
+    let low = 0, high = 1;
+    for (let i = 0; i < 20; i++) {
+      const mid = (low + high) / 2;
+      if (measure(orientation, mid)) low = mid;
+      else high = mid;
+    }
+    return low;
+  }
+
+  const portrait = bestScale('portrait');
+  const landscape = bestScale('landscape');
+  const orientation = landscape > portrait + 0.001 ? 'landscape' : 'portrait';
+  const scale = orientation === 'landscape' ? landscape : portrait;
+  $('print-page').textContent = `@page { size:A4 ${orientation}; margin:12mm; }`;
+  measure(orientation, scale);
+  for (const [el, size] of textSizes) el.style.fontSize = (size * scale) + 'px';
+}
+
+function finishPrint() {
+  const workspace = document.querySelector('.workspace');
+  workspace.style.removeProperty('width');
+  document.body.style.removeProperty('--print-base-cell');
+  document.body.style.removeProperty('--print-base-bw');
+  document.body.style.removeProperty('--print-scale');
+  document.body.classList.remove('preparing-print');
+  fitTexts();
+}
+window.addEventListener('beforeprint', preparePrint);
+window.addEventListener('afterprint', finishPrint);
 
 /* ---------- Visning ---------- */
 function render() {
