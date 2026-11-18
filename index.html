@@ -76,6 +76,13 @@ body.preparing-print .letters span { min-width:calc(34px * var(--print-scale)); 
 body.preparing-print .num { min-width:calc(20px * var(--print-scale)); height:calc(20px * var(--print-scale)); padding:0 calc(4px * var(--print-scale)); font-size:calc(.7rem * var(--print-scale)); }
 body.preparing-print .arrow { font-size:calc(.8rem * var(--print-scale)); }
 body.preparing-print .wordtxt { padding:0 calc(4px * var(--print-scale)); }
+#batchPrint { display:none; }
+body.preparing-print.batch-mode .layout { display:none; }
+body.preparing-print.batch-mode #batchPrint { display:block; }
+.batch-page { display:grid; grid-template-columns:1fr; align-content:start; }
+.batch-sheet { display:flex; flex-direction:column; align-items:center; overflow:visible; min-height:0; }
+.batch-sheet .print-title { font-size:calc(1.5rem * var(--print-scale)); font-weight:700; text-align:center; width:100%; margin-bottom:calc(12px * var(--print-scale)); }
+.batch-sheet .print-grid { display:grid; flex-shrink:0; gap:0; padding:0 var(--bw) var(--bw) 0; }
 @media print {
   body { background:#fff; padding:0; }
   header, .panel, .toolbar { display:none !important; }
@@ -87,6 +94,8 @@ body.preparing-print .wordtxt { padding:0 calc(4px * var(--print-scale)); }
   .cell.sel, .cell.dragover { outline:none; }
   .ph { display:none; }
   .cell.blank.edit:hover { background:transparent; }
+  .batch-page { break-after:page; page-break-after:always; }
+  .batch-page:last-child { break-after:auto; page-break-after:auto; }
   * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 }
 </style>
@@ -119,6 +128,9 @@ body.preparing-print .wordtxt { padding:0 calc(4px * var(--print-scale)); }
   <button class="full" id="btnGen">⚡ Generer kryssord</button>
   <button class="full sec" id="btnRegen">🔀 Prøv nytt mønster</button>
   <div class="status" id="status"></div>
+  <button class="full sec" id="btnAutoHints">💡 Lag hint til kryssordet</button>
+  <div class="hint">Foreslår hint fra kjente løsningsord på valgt kryssordspråk. Egne hint beholdes; bilder gjenkjennes ikke automatisk.</div>
+  <div class="status" id="hintStatus" role="status" aria-live="polite"></div>
 
   <h2>2. Bilder</h2>
   <div class="hint" style="margin-top:0">Klikk en bilderute (gul), og lim inn med <b>Ctrl+V</b>, dra en bildefil oppå ruten, eller last opp:</div>
@@ -175,6 +187,17 @@ body.preparing-print .wordtxt { padding:0 calc(4px * var(--print-scale)); }
   </div>
   <input type="file" id="loadFile" accept="application/json" style="display:none">
   <div class="hint">Arbeidet lagres automatisk i nettleseren.</div>
+  <h2>5. Flere varianter til utskrift</h2>
+  <label for="variantCount">Antall ulike kryssord (inkludert det du har laget)</label>
+  <input type="number" id="variantCount" min="2" max="8" value="2">
+  <label for="variantsPerPage">Plassering på A4</label>
+  <select id="variantsPerPage">
+    <option value="1">Ett kryssord per side</option>
+    <option value="2">To kryssord per side</option>
+  </select>
+  <button class="full sec" id="btnPrintVariants">🖨️ Lag og skriv ut varianter</button>
+  <div class="hint">Bruker ordene og ledetrådene i gjeldende kryssord. Store kryssord blir mindre når to skal dele en side.</div>
+  <div class="status" id="variantStatus" role="status" aria-live="polite"></div>
 </div>
 
 <div class="workspace">
@@ -189,6 +212,7 @@ body.preparing-print .wordtxt { padding:0 calc(4px * var(--print-scale)); }
   <div id="letters" class="letters"></div>
 </div>
 </div>
+<div id="batchPrint"></div>
 
 <script>
 const MAXIMG = 400;
@@ -206,6 +230,7 @@ function save() {
   catch (e) { $('status').className = 'status warn'; $('status').style.display = 'block'; $('status').textContent = 'Kunne ikke lagre automatisk (for mange/store bilder). Bruk «Lagre fil».'; }
 }
 function applyState(o) {
+  $('hintStatus').style.display = 'none';
   Object.assign(S, o);
   S.grid = S.grid.map(row => row.map(c => Object.assign(blankCell(), c)));
   S.rows = S.grid.length; S.cols = S.grid[0].length;
@@ -238,6 +263,7 @@ window.addEventListener('resize', applySize);
 
 /* Beregn største målestokk som gir plass til hele arbeidsarket på A4. */
 function preparePrint() {
+  if (document.body.classList.contains('batch-mode')) return;
   const workspace = document.querySelector('.workspace');
   const grid = $('grid');
   const pxPerMm = 96 / 25.4;
@@ -279,6 +305,12 @@ function preparePrint() {
 }
 
 function finishPrint() {
+  if (document.body.classList.contains('batch-mode')) {
+    document.body.classList.remove('batch-mode', 'preparing-print');
+    $('batchPrint').replaceChildren();
+    for (const prop of ['--print-base-cell', '--print-base-bw', '--print-scale']) document.body.style.removeProperty(prop);
+    return;
+  }
   const workspace = document.querySelector('.workspace');
   workspace.style.removeProperty('width');
   document.body.style.removeProperty('--print-base-cell');
@@ -291,7 +323,7 @@ window.addEventListener('beforeprint', preparePrint);
 window.addEventListener('afterprint', finishPrint);
 
 /* ---------- Visning ---------- */
-function render() {
+function render(saveChanges = true) {
   const g = $('grid');
   g.innerHTML = '';
   g.style.gridTemplateColumns = `repeat(${S.cols}, calc(var(--cell) - var(--bw)))`;
@@ -342,7 +374,7 @@ function render() {
   renderHints();
   renderLetters();
   updateSelUI();
-  save();
+  if (saveChanges) save();
 }
 
 /* Skalerer synonymer slik at hele ordet er synlig i ruten */
@@ -481,6 +513,13 @@ const EMOJI = {
   HATT:'🎩', LUE:'🧢', SKO:'👟', STØVEL:'🥾', SOKK:'🧦', BUKSE:'👖', KJOLE:'👗', GENSER:'🧶', JAKKE:'🧥', VOTT:'🧤', SKJERF:'🧣', BRILLER:'👓', KRONE:'👑', RING:'💍', VESKE:'👜',
   KART:'🗺️', FLAGG:'🏁', ANKER:'⚓', HAMMER:'🔨', SKRUTREKKER:'🪛', SAG:'🪚', SPADE:'🪣', SPANN:'🪣', STIGE:'🪜', MAGNET:'🧲', BOMBE:'💣', SVERD:'⚔️', SKJOLD:'🛡️', TELESKOP:'🔭', MIKROSKOP:'🔬', PLANET:'🪐', UFO:'🛸', STJERNEHIMMEL:'🌌', KALENDER:'📅', PENGER:'💰', MYNT:'🪙', POST:'📮', BREV:'✉️', PAKKE:'📦', SØPPEL:'🗑️', LYSPÆRE:'💡', BATTERI:'🔋', TELEFONKIOSK:'☎️', VARME:'🌡️', TERMOMETER:'🌡️', SNØMANN:'⛄', TANNBØRSTE:'🪥', SÅPE:'🧼', SVAMP:'🧽', KOST:'🧹'
 };
+for (const word of ['SPADE', 'UBÅT', 'MARKER', 'KREPS', 'FYRTÅRN', 'TAVLE', 'GENSER', 'FLASKE', 'GAFFEL', 'LYKTE', 'TELEFONKIOSK', 'VARME', 'JORD', 'BALL', 'BLÆKKSPRUT', 'TRØMPET', 'VOTT', 'NØTT', 'MELON', 'GRESS', 'GRAN']) delete EMOJI[word];
+Object.assign(EMOJI, {
+  BØTTE:'🪣', MOTORBÅT:'🚤', LARVE:'🐛', KRABBE:'🦀', TÅRN:'🗼', LÆRER:'🧑‍🏫',
+  GARNNØSTE:'🧶', TÅTEFLASKE:'🍼', BESTIKK:'🍴', LYKT:'🏮', TELEFON:'☎️',
+  TERMOMETER:'🌡️', JORDKLODEN:'🌍', FOTBALL:'⚽', BLEKKSPRUT:'🐙', TROMPET:'🎺',
+  HANSKE:'🧤', PEANØTT:'🥜', VANNMELON:'🍉', SPIRE:'🌱', GRANTRE:'🌲'
+});
 const EMOJI_KEYS = Object.keys(EMOJI).sort((a, b) => b.length - a.length);
 const EMOJI_EN = {
   SUN:'☀️', MOON:'🌙', STAR:'⭐', CLOUD:'☁️', RAIN:'🌧️', SNOW:'❄️', WIND:'💨', RAINBOW:'🌈', FIRE:'🔥', WATER:'💧', MOUNTAIN:'⛰️', VOLCANO:'🌋', BEACH:'🏖️', ISLAND:'🏝️', EARTH:'🌍',
@@ -493,12 +532,19 @@ const EMOJI_EN = {
   HEART:'❤️', EYE:'👁️', EAR:'👂', NOSE:'👃', MOUTH:'👄', TONGUE:'👅', TOOTH:'🦷', HAND:'✋', FOOT:'🦶', BONE:'🦴', BRAIN:'🧠', BABY:'👶', CHILD:'🧒', MAN:'👨', WOMAN:'👩', BOY:'👦', GIRL:'👧', KING:'🤴', PRINCESS:'👸', TEACHER:'🧑‍🏫', DOCTOR:'🧑‍⚕️', FIREMAN:'🧑‍🚒', GHOST:'👻', WITCH:'🧙‍♀️', ROBOT:'🤖', FAIRY:'🧚',
   HAT:'🎩', CAP:'🧢', SHOE:'👟', BOOT:'🥾', SOCK:'🧦', TROUSERS:'👖', DRESS:'👗', JACKET:'🧥', GLOVE:'🧤', SCARF:'🧣', GLASSES:'👓', CROWN:'👑', RING:'💍', MAP:'🗺️', FLAG:'🏁', ANCHOR:'⚓', HAMMER:'🔨', SAW:'🪚', LADDER:'🪜', MAGNET:'🧲', BOMB:'💣', SWORD:'⚔️', SHIELD:'🛡️', TELESCOPE:'🔭', PLANET:'🪐', UFO:'🛸', CALENDAR:'📅', MONEY:'💰', COIN:'🪙', LETTER:'✉️', PARCEL:'📦', BATTERY:'🔋', SNOWMAN:'⛄', SOAP:'🧼', SPONGE:'🧽', BROOM:'🧹'
 };
+for (const word of ['WORM', 'BOTTLE', 'FORK', 'BALL', 'NUT', 'MELON', 'GRASS']) delete EMOJI_EN[word];
+Object.assign(EMOJI_EN, { CATERPILLAR:'🐛', BABYBOTTLE:'🍼', CUTLERY:'🍴', PEANUT:'🥜', WATERMELON:'🍉', SPROUT:'🌱' });
 const EMOJI_KEYS_EN = Object.keys(EMOJI_EN).sort((a, b) => b.length - a.length);
 const isEN = () => S.lang === 'en';
 const emojiDict = () => isEN() ? EMOJI_EN : EMOJI;
+const NO_EMOJI_SUGGESTION = {
+  no: new Set(['SPADE', 'UBÅT', 'MARKER', 'KREPS', 'FYRTÅRN', 'TAVLE', 'GENSER', 'FLASKE', 'GAFFEL', 'TELEFONKIOSK', 'VARME', 'JORD', 'BALL', 'BLÆKKSPRUT', 'TRØMPET', 'VOTT', 'NØTT', 'MELON', 'GRESS', 'GRAN']),
+  en: new Set(['WORM', 'BOTTLE', 'FORK', 'BALL', 'NUT', 'MELON', 'GRASS'])
+};
 function suggestEmoji(word) {
   const D = emojiDict(), K = isEN() ? EMOJI_KEYS_EN : EMOJI_KEYS;
   if (D[word]) return D[word];
+  if (NO_EMOJI_SUGGESTION[isEN() ? 'en' : 'no'].has(word)) return '';
   const ends = isEN() ? ['ES', 'S'] : ['ENE', 'ER', 'EN', 'ET', 'E', 'A', 'S'];
   for (const e of ends) if (word.endsWith(e) && D[word.slice(0, -e.length)] && word.length - e.length >= 2) return D[word.slice(0, -e.length)];
   for (const k of K) if (k.length >= 3 && word.endsWith(k)) return D[k];
@@ -596,6 +642,7 @@ function tryLayout(order, lim) {
 }
 
 function generate() {
+  $('hintStatus').style.display = 'none';
   S.words = $('words').value;
   const words = parseWords(S.words);
   const st = $('status');
@@ -634,6 +681,7 @@ function generate() {
 
 /* ---------- Tilfeldig emoji-kryssord ---------- */
 function generateRandom() {
+  $('hintStatus').style.display = 'none';
   const rows = Math.min(30, Math.max(3, +$('rRows').value || 8));
   const cols = Math.min(30, Math.max(3, +$('rCols').value || 8));
   const lim = { rows, cols };
@@ -674,6 +722,412 @@ function generateRandom() {
   st.textContent = `Tilfeldig kryssord ${rows}×${cols} med ${best.placed.length} ord og emoji. Bytt til lærervisning for å se fasit. Ordene står i ordlisten.`;
 }
 
+function layoutSignature(grid) {
+  const occupied = [];
+  grid.forEach((row, r) => row.forEach((cell, c) => {
+    if (cell.t !== 'blank') occupied.push({ r, c, cell });
+  }));
+  const minR = Math.min(...occupied.map(x => x.r));
+  const minC = Math.min(...occupied.map(x => x.c));
+  return occupied.map(({ r, c, cell }) =>
+    `${r - minR},${c - minC}:${cell.t === 'clue' ? 'C' + cell.arrow + cell.word : 'L' + cell.letter}`
+  ).sort().join('|');
+}
+
+function printVariants() {
+  const status = $('variantStatus');
+  const fail = message => {
+    status.style.display = 'block';
+    status.className = 'status warn';
+    status.textContent = message;
+  };
+  const count = Number($('variantCount').value);
+  const perPage = Number($('variantsPerPage').value);
+  if (!Number.isInteger(count) || count < 2 || count > 8 || ![1, 2].includes(perPage)) {
+    fail('Velg mellom 2 og 8 varianter og en gyldig plassering.');
+    return;
+  }
+  const clues = new Map(), covered = new Set();
+  for (let r = 0; r < S.rows; r++) for (let c = 0; c < S.cols; c++) {
+    const cell = S.grid[r][c];
+    if (cell.t !== 'clue') continue;
+    const word = cell.word;
+    if (!word || !/^[A-ZÆØÅ0-9]+$/.test(word) || !DIR[cell.arrow] || clues.has(word)) {
+      fail('Alle bilderuter må ha et unikt løsningsord og en pil. Generer kryssordet fra en ordliste først.');
+      return;
+    }
+    const [dr, dc] = DIR[cell.arrow];
+    for (let i = 0; i < word.length; i++) {
+      const rr = r + dr * (i + 1), cc = c + dc * (i + 1);
+      const letter = S.grid[rr] && S.grid[rr][cc];
+      if (!letter || letter.t !== 'letter' || letter.letter !== word[i]) {
+        fail(`Rutene for ${word} stemmer ikke med løsningsordet. Rett kryssordet før du lager varianter.`);
+        return;
+      }
+      covered.add(`${rr},${cc}`);
+    }
+    clues.set(word, cell);
+  }
+  if (!clues.size) { fail('Lag et kryssord fra en ordliste før du lager varianter.'); return; }
+  if (S.grid.some((row, r) => row.some((cell, c) => cell.t === 'letter' && !covered.has(`${r},${c}`)))) {
+    fail('Kryssordet inneholder bokstavruter som ikke tilhører et løsningsord. Rett dem før du lager varianter.');
+    return;
+  }
+
+  const words = [...clues.keys()];
+  const grids = [{ grid:S.grid, rows:S.rows, cols:S.cols }];
+  const signatures = new Set([layoutSignature(S.grid)]);
+  for (let n = 1; n < count; n++) {
+    let found = null;
+    for (let attempt = 0; attempt < 300; attempt++) {
+      const layout = tryLayout(shuffle(words.slice()));
+      if (layout.placed.length !== words.length) continue;
+      const grid = makeGrid(layout.rows, layout.cols);
+      for (const v of layout.cells.values()) {
+        const cell = grid[v.pos[0] - layout.r0][v.pos[1] - layout.c0];
+        if (v.t === 'letter') Object.assign(cell, { t:'letter', letter:v.letter, dirs:v.dirs });
+        else Object.assign(cell, clues.get(v.word), { t:'clue', arrow:v.arrow });
+      }
+      const signature = layoutSignature(grid);
+      if (signatures.has(signature)) continue;
+      signatures.add(signature);
+      found = { grid, rows:layout.rows, cols:layout.cols };
+      break;
+    }
+    if (!found) {
+      fail(`Fant bare ${grids.length} ulike komplette kryssord. Prøv færre varianter eller en annen ordliste.`);
+      return;
+    }
+    grids.push(found);
+  }
+
+  const original = {
+    grid:S.grid, rows:S.rows, cols:S.cols, sel,
+    usedLetters:[...$('letters').children].map(el => el.classList.contains('used'))
+  };
+  const output = $('batchPrint');
+  output.replaceChildren();
+  try {
+    let page;
+    grids.forEach((variant, i) => {
+      if (i % perPage === 0) {
+        page = document.createElement('div');
+        page.className = 'batch-page';
+        output.appendChild(page);
+      }
+      S.grid = variant.grid; S.rows = variant.rows; S.cols = variant.cols; sel = null;
+      render(false);
+      if (i === 0) [...$('letters').children].forEach((el, index) => {
+        el.classList.toggle('used', !!original.usedLetters[index]);
+      });
+      const sheet = document.querySelector('.workspace').cloneNode(true);
+      sheet.className = 'batch-sheet';
+      sheet.querySelector('.toolbar').remove();
+      const title = document.createElement('div');
+      title.className = 'print-title';
+      title.textContent = S.title;
+      sheet.querySelector('#title').replaceWith(title);
+      sheet.querySelector('#grid').classList.add('print-grid');
+      sheet.querySelector('#grid').removeAttribute('id');
+      sheet.querySelector('#hints').removeAttribute('id');
+      sheet.querySelector('#letters').removeAttribute('id');
+      sheet.querySelectorAll('.wordtxt').forEach(el => { el.dataset.baseFontSize = el.style.fontSize; });
+      page.appendChild(sheet);
+    });
+  } finally {
+    S.grid = original.grid; S.rows = original.rows; S.cols = original.cols; sel = original.sel;
+    render(false);
+    [...$('letters').children].forEach((el, index) => {
+      el.classList.toggle('used', !!original.usedLetters[index]);
+    });
+  }
+
+  const rootStyle = getComputedStyle(document.documentElement);
+  document.body.style.setProperty('--print-base-cell', rootStyle.getPropertyValue('--cell'));
+  document.body.style.setProperty('--print-base-bw', rootStyle.getPropertyValue('--bw'));
+  document.body.classList.add('preparing-print', 'batch-mode');
+  const pages = [...output.children], pxPerMm = 96 / 25.4;
+  function fits(orientation, scale) {
+    const landscape = orientation === 'landscape';
+    const width = ((landscape ? 297 : 210) - 24) * pxPerMm;
+    const height = ((landscape ? 210 : 297) - 24) * pxPerMm;
+    document.body.style.setProperty('--print-scale', scale);
+    for (const page of pages) {
+      page.style.width = width + 'px';
+      page.style.rowGap = (8 * pxPerMm * scale) + 'px';
+      if (page.getBoundingClientRect().height > height - 2) return false;
+      for (const grid of page.querySelectorAll('.print-grid')) {
+        if (grid.getBoundingClientRect().width > width - 2) return false;
+      }
+    }
+    return true;
+  }
+  function bestScale(orientation) {
+    if (fits(orientation, 1)) return 1;
+    let low = 0, high = 1;
+    for (let i = 0; i < 20; i++) {
+      const mid = (low + high) / 2;
+      if (fits(orientation, mid)) low = mid; else high = mid;
+    }
+    return low;
+  }
+  const portrait = bestScale('portrait'), landscape = bestScale('landscape');
+  const orientation = landscape > portrait + 0.001 ? 'landscape' : 'portrait';
+  const scale = orientation === 'landscape' ? landscape : portrait;
+  fits(orientation, scale);
+  output.querySelectorAll('.wordtxt').forEach(el => {
+    el.style.fontSize = (parseFloat(el.dataset.baseFontSize) * scale) + 'px';
+  });
+  $('print-page').textContent = `@page { size:A4 ${orientation}; margin:12mm; }`;
+  status.style.display = 'block';
+  status.className = 'status';
+  status.textContent = `${count} ulike kryssord klare til utskrift. Originalen er uendret.`;
+  window.print();
+}
+
+/* Hint er skrevet på forhånd og slår bare opp hele løsningsord. */
+const HINTS = {
+  no: {
+    IS:'Kald dessert som kan smelte.', SOL:'Lyser og varmer på himmelen om dagen.', MÅNE:'Kan lyse på himmelen om natten.', STJERNE:'Et lysende punkt på nattehimmelen.',
+    SKY:'Svever på himmelen og kan gi regn.', REGN:'Vanndråper som faller fra skyene.', SNØ:'Hvite fnugg som faller når det er kaldt.', VIND:'Luft som beveger seg.',
+    REGNBUE:'En fargerik bue som kan vises etter regn.', ILD:'Flammer som gir varme og lys.', VANN:'Noe vi drikker når vi er tørste.', FJELL:'Et høyt område i naturen.',
+    STRAND:'Sand eller småstein langs vannet.', HUND:'Et husdyr som kan bjeffe.', KATT:'Et husdyr som kan male og mjaue.', MUS:'Et lite dyr med lang hale.',
+    KANIN:'Et dyr med lange ører som hopper.', REV:'Et rødbrunt dyr med buskete hale.', BJØRN:'Et stort dyr som kan gå i hi om vinteren.', TIGER:'En stor katt med striper.',
+    LØVE:'En stor katt der hannen ofte har manke.', KU:'Et husdyr som sier mø og gir melk.', GRIS:'Et gårdsdyr som kan grynte.', FROSK:'Et grønt dyr som hopper og kvekker.',
+    APE:'Et dyr som ofte klatrer i trær.', FUGL:'Et dyr med fjær og nebb.', PINGVIN:'En fugl som svømmer, men ikke kan fly.', UGLE:'En fugl som ofte er våken om natten.',
+    AND:'En fugl som svømmer og kan kvekke.', SLANGE:'Et dyr uten bein som slynger seg.', SKILPADDE:'Et dyr med hardt skall på ryggen.', HVAL:'Et stort sjøpattedyr som puster luft.',
+    DELFIN:'Et sjøpattedyr som kan hoppe over vannflaten.', FISK:'Et dyr som lever i vann og puster med gjeller.', HAI:'En stor rovfisk med skarpe tenner.',
+    BIE:'Et insekt som lager honning.', MAUR:'Et lite insekt som ofte bor i en tue.', SOMMERFUGL:'Et insekt med fargerike vinger.', HEST:'Et stort dyr som man kan ri på.',
+    SJIRAFF:'Et dyr med svært lang hals.', ELEFANT:'Et stort dyr med snabel.', SAU:'Et gårdsdyr som gir oss ull.', ULV:'Et rovdyr som ligner på en hund.',
+    EPLE:'En frukt som ofte er rød eller grønn.', PÆRE:'En frukt som er smal øverst og bred nederst.', BANAN:'En lang, gul frukt.', APPELSIN:'En rund sitrusfrukt med oransje skall.',
+    SITRON:'En gul og sur sitrusfrukt.', DRUE:'En liten frukt som ofte vokser i klaser.', JORDBÆR:'Et rødt bær med små prikker utenpå.', GULROT:'En oransje grønnsak som vokser i jorden.',
+    POTET:'En grønnsak som ofte kokes eller stekes.', BRØD:'Noe vi skjærer i skiver og har pålegg på.', OST:'Et pålegg som lages av melk.', EGG:'Noe høna kan legge.',
+    MELK:'En hvit drikk som blant annet kommer fra kua.', KAKE:'Noe søtt som ofte serveres i bursdag.', PIZZA:'En matrett med bunn, saus og ofte ost.',
+    BIL:'Et kjøretøy med fire hjul.', BUSS:'Et stort kjøretøy som frakter mange passasjerer.', TOG:'Et kjøretøy som kjører på skinner.',
+    FLY:'Et kjøretøy med vinger som frakter folk i luften.', BÅT:'Et fartøy som flyter på vannet.', SYKKEL:'Et kjøretøy med to hjul som du tråkker på.',
+    HUS:'En bygning som mennesker kan bo i.', SKOLE:'Et sted der elever lærer.', KIRKE:'En bygning der mange går på gudstjeneste.', TELT:'Et bærbart ly man kan sove i ute.',
+    DØR:'Denne åpner du for å gå inn i et rom.', VINDU:'Dette kan du se ut gjennom i en vegg.', SENG:'Et møbel du sover i.', STOL:'Et møbel du kan sitte på.',
+    KLOKKE:'Viser hva tiden er.', NØKKEL:'Brukes til å åpne en lås.', PARAPLY:'Holder regnet borte fra hodet.', TRE:'En stor plante med stamme og grener.',
+    BLOMST:'En plante som ofte har fargerike blader.', ROSE:'En blomst som ofte har torner.', BOK:'Har sider med tekst eller bilder.', BLYANT:'Brukes til å skrive og kan spisses.',
+    SAKS:'Brukes til å klippe papir.', TELEFON:'Brukes blant annet til å ringe med.', GITAR:'Et musikkinstrument med strenger.', PIANO:'Et musikkinstrument med svarte og hvite tangenter.',
+    BALL:'En rund leke som kan sparkes eller kastes.', HJERTE:'Et organ som pumper blod rundt i kroppen.', ØYE:'Kroppsdelen du ser med.', ØRE:'Kroppsdelen du hører med.',
+    NESE:'Kroppsdelen du lukter med.', TANN:'Brukes til å tygge mat.', HÅND:'Har fingre og kan gripe ting.', FOT:'Kroppsdelen du står og går på.',
+    HATT:'Et plagg som bæres på hodet.', SKO:'Et plagg du har på føttene.', SOKK:'Et plagg som brukes på foten, ofte inni en sko.', BRILLER:'Hjelpemiddel som kan gjøre det lettere å se.'
+  },
+  en: {
+    SUN:'It shines in the sky during the day.', MOON:'You can see it in the sky at night.', STAR:'A tiny point of light in the night sky.', CLOUD:'It floats in the sky and can bring rain.',
+    RAIN:'Drops of water falling from clouds.', SNOW:'White flakes that fall when it is cold.', WIND:'Moving air.', RAINBOW:'A colourful arc that can appear after rain.',
+    FIRE:'Flames that give heat and light.', WATER:'Something you drink when you are thirsty.', MOUNTAIN:'A very high area of land.', BEACH:'Sand or pebbles beside the sea.',
+    DOG:'A pet that can bark.', CAT:'A pet that can purr and meow.', MOUSE:'A small animal with a long tail.', RABBIT:'An animal with long ears that hops.',
+    FOX:'A reddish animal with a bushy tail.', BEAR:'A large animal that may sleep through the winter.', TIGER:'A big cat with stripes.', LION:'A big cat; the male often has a mane.',
+    COW:'A farm animal that says moo and gives milk.', PIG:'A farm animal that can oink.', FROG:'A green animal that hops and croaks.', MONKEY:'An animal that often climbs trees.',
+    BIRD:'An animal with feathers and a beak.', PENGUIN:'A bird that swims but cannot fly.', OWL:'A bird that is often awake at night.', DUCK:'A bird that swims and can quack.',
+    SNAKE:'An animal with no legs that slithers.', TURTLE:'An animal with a hard shell on its back.', WHALE:'A very large sea mammal that breathes air.',
+    DOLPHIN:'A sea mammal that can leap out of the water.', FISH:'An animal that lives in water and breathes through gills.', SHARK:'A large fish with sharp teeth.',
+    BEE:'An insect that makes honey.', ANT:'A small insect that often lives in a colony.', BUTTERFLY:'An insect with colourful wings.', HORSE:'A large animal that people can ride.',
+    GIRAFFE:'An animal with a very long neck.', ELEPHANT:'A large animal with a trunk.', SHEEP:'A farm animal that gives us wool.', WOLF:'A wild animal that looks like a dog.',
+    APPLE:'A fruit that is often red or green.', PEAR:'A fruit that is narrow at the top and wide at the bottom.', BANANA:'A long yellow fruit.', ORANGE:'A round citrus fruit often squeezed to make juice.',
+    LEMON:'A yellow citrus fruit that tastes sour.', GRAPES:'Small fruits that grow in bunches.', STRAWBERRY:'A red fruit with tiny seeds on the outside.', CARROT:'An orange vegetable that grows in the ground.',
+    POTATO:'A vegetable that is often boiled or baked.', BREAD:'You can cut this into slices for a sandwich.', CHEESE:'A food made from milk.', EGG:'A hen can lay one of these.',
+    MILK:'A white drink that can come from a cow.', CAKE:'A sweet food often served at birthdays.', PIZZA:'A flat food with sauce and usually cheese.',
+    CAR:'A vehicle with four wheels.', BUS:'A large vehicle that carries many passengers.', TRAIN:'A vehicle that runs on rails.', PLANE:'A vehicle with wings that flies through the air.',
+    BOAT:'A vessel that floats on water.', BIKE:'A vehicle with two wheels that you pedal.', HOUSE:'A building where people can live.', SCHOOL:'A place where children learn.',
+    CHURCH:'A building where people may go to worship.', TENT:'A portable shelter for sleeping outdoors.', DOOR:'You open this to enter a room.', WINDOW:'You can look through this in a wall.',
+    BED:'A piece of furniture you sleep in.', CHAIR:'A piece of furniture you sit on.', CLOCK:'It tells you the time.', KEY:'You use this to open a lock.',
+    UMBRELLA:'It keeps the rain off your head.', TREE:'A tall plant with a trunk and branches.', FLOWER:'A plant that often has colourful petals.',
+    ROSE:'A flower that often has thorns.', BOOK:'It has pages with words or pictures.', PENCIL:'You can write with it and sharpen it.',
+    SCISSORS:'You use these to cut paper.', PHONE:'You can use it to call someone.', GUITAR:'A musical instrument with strings.',
+    PIANO:'A musical instrument with black and white keys.', BALL:'A round toy that you can kick or throw.', HEART:'An organ that pumps blood around the body.',
+    EYE:'The part of your body you see with.', EAR:'The part of your body you hear with.', NOSE:'The part of your body you smell with.',
+    TOOTH:'You use it to chew food.', HAND:'It has fingers and can hold things.', FOOT:'You stand and walk on it.',
+    HAT:'Clothing worn on your head.', SHOE:'Clothing worn on your foot.', SOCK:'Clothing worn on your foot, often inside a shoe.', GLASSES:'They can help you see more clearly.'
+  }
+};
+
+Object.assign(HINTS.no, {
+  LYN:'Et sterkt lysglimt på himmelen når det tordner.', VULKAN:'Et fjell som kan sprute ut lava.', ØY:'Et landområde med vann på alle sider.',
+  HAMSTER:'Et lite kjæledyr som ofte løper i et hjul.', PANDA:'En svart og hvit bjørn som spiser bambus.', KOALA:'Et australsk dyr som lever i trær og spiser eukalyptusblader.',
+  HØNE:'En fugl på gården som legger egg.', KYLLING:'En unge som klekkes fra et egg på en hønsegård.', GÅS:'En stor fugl som kan svømme og kakle.', ØRN:'En stor rovfugl med kraftig nebb.',
+  DUE:'En fugl som ofte finnes i byer og parker.', FLAMINGO:'En rosa fugl med lange bein.', PÅFUGL:'En fugl som kan spre ut en stor, fargerik stjert.',
+  KROKODILLE:'Et stort krypdyr med lang snute og skarpe tenner.', DRAGE:'Et fantasidyr som kan fly og noen ganger sprute ild.', BLÆKKSPRUT:'Et sjødyr med lange armer og myk kropp.',
+  KREPS:'Et vanndyr med hardt skall og klør.', HUMMER:'Et stort sjødyr med hardt skall og kraftige klør.', REKE:'Et lite skalldyr fra havet som mange spiser.',
+  SNEGLE:'Et langsomt dyr som kan ha hus på ryggen.', MARIHØNE:'En liten bille som ofte er rød med svarte prikker.', EDDERKOPP:'Et lite dyr med åtte bein som kan spinne nett.',
+  MARKER:'Små, lange dyr uten bein som kan leve i jorden.', ZEBRA:'Et dyr som ligner på en hest og har svarte og hvite striper.',
+  NESEHORN:'Et stort dyr med tykk hud og horn på snuten.', KAMEL:'Et ørkendyr med én eller to pukler på ryggen.', GEIT:'Et gårdsdyr som ofte har horn og skjegg.',
+  HJORT:'Et skogsdyr der hannen kan ha store gevir.', ELG:'Et stort hjortedyr med lange bein som lever i norske skoger.', ISBJØRN:'En stor hvit bjørn som lever i Arktis.',
+  EKORN:'Et lite dyr med buskete hale som klatrer i trær.', FLAGGERMUS:'Et pattedyr med vinger som ofte flyr om natten.', DINOSAUR:'Et stort forhistorisk dyr som levde for millioner av år siden.',
+  BLÅBÆR:'Små blå bær som vokser i skogen.', KIRSEBÆR:'Små røde frukter med stein inni som vokser på trær.', FERSKEN:'En frukt med mykt, lodden skall og stor stein inni.',
+  MELON:'En stor frukt med saftig fruktkjøtt.', ANANAS:'En tropisk frukt med piggete skall og blader på toppen.', MANGO:'En søt tropisk frukt med stor stein inni.',
+  KIWI:'En liten frukt med brunt, lodden skall og grønt fruktkjøtt.', TOMAT:'En rød og saftig frukt som ofte brukes i salat.', LØK:'En grønnsak med mange lag som kan få øynene til å renne.',
+  MAIS:'Gule korn som vokser på en kolbe.', PAPRIKA:'En sprø grønnsak som finnes i blant annet rødt, gult og grønt.', AGURK:'En lang grønn grønnsak som ofte brukes i salat.',
+  BROKKOLI:'En grønn grønnsak som ligner små trær.', SOPP:'Vokser ofte i skogen og kan ha hatt og stilk.', KJEKS:'En liten, sprø bakst som ofte spises til kaffen.',
+  SJOKOLADE:'En søtsak som lages av kakao.', GODTERI:'Søte saker som ofte spises på lørdag.', BURGER:'Et rundt brød med en stekt kake av kjøtt eller grønnsaker inni.',
+  POMMES:'Potetbiter som er stekt eller fritert og ofte serveres med ketchup.', PØLSE:'Mat som ofte serveres i brød eller lompe.', PASTA:'Mat laget av deig, for eksempel makaroni og spagetti.',
+  SUPPE:'En varm matrett du ofte spiser med skje.', RIS:'Små hvite eller brune korn som kokes og spises.', HONNING:'Noe søtt som bier lager.',
+  KAFFE:'En varm drikk laget av ristede bønner.', TE:'En varm drikk laget ved å trekke blader i vann.', JUICE:'En drikk laget av presset frukt eller grønnsaker.',
+  POPCORN:'Maiskorn som spretter når de varmes opp.', NØTT:'En hard frukt med spiselig kjerne inni.',
+  TRIKK:'Et kjøretøy som går på skinner i bygatene.', HELIKOPTER:'Et luftfartøy med store roterende blader på toppen.', SKIP:'Et stort fartøy som seiler på havet.',
+  MOTORSYKKEL:'Et kjøretøy med motor og vanligvis to hjul.', TRAKTOR:'En kraftig maskin som ofte brukes på gården.', LASTEBIL:'Et stort kjøretøy som frakter varer.',
+  BRANNBIL:'Et utrykningskjøretøy som hjelper til når noe brenner.', POLITIBIL:'Et utrykningskjøretøy som brukes av ordensmakten.', AMBULANSE:'Et utrykningskjøretøy som frakter syke og skadde.',
+  RAKETT:'Et fartøy som kan skytes opp i verdensrommet.', UBÅT:'Et fartøy som kan kjøre under vann.', SPARKESYKKEL:'Et kjøretøy med to hjul som du står på og sparker deg fram med.',
+  SLOTT:'En stor bygning der en konge eller dronning kan bo.', FYRTÅRN:'Et høyt bygg med lys som viser vei for båter.', BRO:'En forbindelse du kan gå eller kjøre over vann på.',
+  SYKEHUS:'Et sted der syke og skadde får behandling.', BUTIKK:'Et sted der du kan kjøpe varer.', FABRIKK:'En bygning der varer blir laget, ofte med maskiner.',
+  SOFA:'Et møbel med plass til flere som vil sitte.', LAMPE:'En ting som gir lys inne i et rom.', LÅS:'En mekanisme som holder noe lukket til du åpner den.',
+  TOALETT:'Noe du sitter på når du går på do.', DUSJ:'Her kan du vaske deg under rennende vann.', BADEKAR:'En stor beholder du kan fylle med vann og sitte i.',
+  SPEIL:'Her kan du se hvordan du selv ser ut.', KOPP:'Et lite drikkekar som ofte har hank.', GLASS:'Et gjennomsiktig drikkekar.',
+  GAFFEL:'Et spiseredskap med flere tinder.', SKJE:'Et spiseredskap som er nyttig til suppe.', KNIV:'Et redskap med skarpt blad som brukes til å skjære.',
+  TALLERKEN:'En flat ting du legger maten på.', FLASKE:'En beholder med smal hals som kan inneholde drikke.', STEKEPANNE:'Et kjøkkenredskap du steker mat i på komfyren.',
+  GRAN:'Et bartre som ofte brukes som juletre.', PALME:'Et tre med lang stamme og store blader, ofte på varme steder.', TULIPAN:'En blomst som ofte vokser fra løk om våren.',
+  SOLSIKKE:'En høy blomst med store gule kronblader og mørk midte.', KAKTUS:'En plante som kan ha pigger og tåler lite vann.', BLAD:'En grønn del som vokser på mange planter og trær.',
+  GRESS:'Grønne strå som ofte vokser på plener.', JORD:'Massen planter kan vokse i.', STEIN:'Et hardt stykke av berg.', KLODE:'En rund modell av planeten vi bor på.',
+  PENN:'Et skriveredskap som bruker blekk.', LINJAL:'Et rett redskap som brukes til å måle lengde.', TAVLE:'En flate læreren kan skrive på foran klassen.',
+  BAG:'En veske som brukes til å bære ting.', PC:'En forkortelse for personlig datamaskin.', DATAMASKIN:'En elektronisk maskin du kan skrive, spille og arbeide på.',
+  MOBIL:'En liten telefon du kan ta med deg.', TV:'En skjerm du kan se filmer og programmer på.', KAMERA:'Et apparat som tar bilder.',
+  RADIO:'Et apparat du kan høre sendinger på.', TROMME:'Et instrument du slår på for å lage rytmer.', FIOLIN:'Et strengeinstrument som ofte spilles med bue.',
+  TRØMPET:'Et blåseinstrument av metall med tre ventiler.', MIKROFON:'Et redskap som fanger opp lyd når du snakker eller synger.', HODETELEFONER:'Utstyr du har over eller i ørene for å høre lyd.',
+  NOTE:'Et tegn som viser en tone i musikk.', FOTBALL:'En sport der to lag prøver å sparke ballen i mål.', BASKETBALL:'En sport der lag prøver å kaste ballen gjennom en kurv.',
+  TENNIS:'En sport der spillerne slår en ball med racket over et nett.', SKI:'Lange, smale redskaper du kan gli på snø med.', SKØYTE:'En sko med metallskinne under som brukes på is.',
+  PREMIE:'Noe du kan vinne i en konkurranse.', MEDALJE:'En utmerkelse som ofte henger i et bånd rundt halsen.', TERNING:'En liten kube med prikker som brukes i spill.',
+  BALLONG:'En tynn pose som fylles med luft og brukes til pynt.', GAVE:'Noe du gir til noen, ofte pakket inn.', JULETRE:'Et pyntet tre som mange har inne i desember.',
+  LYKTE:'En liten lyskilde som ofte kan bæres eller henges opp.', MUNN:'Kroppsdelen du bruker til å spise og snakke.', TUNGE:'En bevegelig kroppsdel inne i munnen som hjelper deg å smake.',
+  BEIN:'En hard del av skjelettet.', HJERNE:'Organet i hodet som hjelper deg å tenke.', BABY:'Et svært lite barn.', BARN:'Et ungt menneske som ikke er voksen.',
+  MANN:'Et voksent menneske av hankjønn.', KVINNE:'Et voksent menneske av hunkjønn.', GUTT:'Et barn av hankjønn.', JENTE:'Et barn av hunkjønn.',
+  KONGE:'En mannlig monark som kan bære krone.', PRINSESSE:'En kvinnelig kongelig som ikke er dronning.', LÆRER:'En person som underviser elever.',
+  LEGE:'En person som undersøker og behandler syke.', BRANNMANN:'En person som slokker branner og hjelper ved ulykker.', SPØKELSE:'En skikkelse i fortellinger som ofte fremstilles som et svevende laken.',
+  HEKS:'En figur i eventyr som kan trylle.', ROBOT:'En maskin som kan utføre oppgaver automatisk.', FE:'En liten magisk skikkelse fra eventyr, ofte med vinger.',
+  LUE:'Et mykt plagg som varmer hodet.', STØVEL:'En høy sko som kan beskytte mot regn og søle.', BUKSE:'Et plagg som dekker begge beina.',
+  KJOLE:'Et plagg som dekker kroppen og henger ned over beina.', GENSER:'Et plagg du tar over hodet for å holde overkroppen varm.', JAKKE:'Et ytterplagg du har utenpå klærne.',
+  VOTT:'Et varmt håndplagg der fingrene deler ett rom.', SKJERF:'Et langt tøystykke du kan ha rundt halsen.', KRONE:'Et smykke som en konge eller dronning kan ha på hodet.',
+  RING:'Et rundt smykke som ofte bæres på fingeren.', VESKE:'En beholder med håndtak som brukes til å bære ting.', KART:'En tegning som viser hvor steder ligger.',
+  FLAGG:'Et tøystykke med farger og symboler som kan representere et land.', ANKER:'En tung gjenstand som holder en båt på plass i vannet.',
+  HAMMER:'Et verktøy du kan slå inn spiker med.', SKRUTREKKER:'Et verktøy du bruker til å vri på skruer.', SAG:'Et verktøy med tenner som brukes til å kutte tre.',
+  SPADE:'Et redskap du kan grave i jorden med.', SPANN:'En beholder med hank som du kan bære vann i.', STIGE:'Et redskap med trinn som hjelper deg å klatre opp.',
+  MAGNET:'En gjenstand som kan trekke til seg jern.', BOMBE:'En gjenstand som er laget for å eksplodere.', SVERD:'Et langt våpen med skarpt blad.',
+  SKJOLD:'En plate som kan brukes til beskyttelse.', TELESKOP:'Et apparat som gjør at fjerne ting på himmelen ser nærmere ut.', MIKROSKOP:'Et apparat som forstørrer svært små ting.',
+  PLANET:'Et stort himmellegeme som går i bane rundt en stjerne.', UFO:'En forkortelse for et uidentifisert flygende objekt.', STJERNEHIMMEL:'Slik ser natten ut når mange lysende prikker er synlige.',
+  KALENDER:'Viser dager, uker og måneder.', PENGER:'Brukes til å betale for varer og tjenester.', MYNT:'Et rundt metallstykke som brukes til betaling.',
+  POST:'Brev og pakker som sendes til noen.', BREV:'En skrevet melding som kan legges i en konvolutt.', PAKKE:'En eske eller bunt som sendes eller gis bort.',
+  SØPPEL:'Ting som kastes fordi de ikke lenger skal brukes.', LYSPÆRE:'En liten gjenstand som lyser når strøm går gjennom den.',
+  BATTERI:'En liten strømkilde som brukes i mange apparater.', TELEFONKIOSK:'En liten bod med en telefon som folk kan bruke.', VARME:'Det motsatte av kulde.',
+  TERMOMETER:'Et redskap som måler temperatur.', SNØMANN:'En figur laget av snø, ofte med gulrotnese.', TANNBØRSTE:'Brukes til å rengjøre tennene.',
+  SÅPE:'Brukes sammen med vann for å vaske seg.', SVAMP:'En myk ting som suger opp vann og brukes til vask.', KOST:'Et redskap med bust som brukes til å feie.'
+});
+
+Object.assign(HINTS.en, {
+  VOLCANO:'A mountain that can erupt with lava.', ISLAND:'An area of land with water on every side.', EARTH:'The planet we live on.',
+  HAMSTER:'A small pet that often runs in a wheel.', PANDA:'A black-and-white bear that eats bamboo.', KOALA:'An Australian animal that lives in trees and eats eucalyptus leaves.',
+  HEN:'A female farm bird that lays eggs.', CHICK:'A young bird that has just hatched.', GOOSE:'A large bird that can swim and honk.',
+  EAGLE:'A large bird of prey with a powerful beak.', DOVE:'A bird often shown as a symbol of peace.', FLAMINGO:'A pink bird with long legs.',
+  PEACOCK:'A bird that can spread out a large, colourful tail.', CROCODILE:'A large reptile with a long snout and sharp teeth.', DRAGON:'An imaginary creature that may fly and breathe fire.',
+  OCTOPUS:'A soft sea animal with eight arms.', CRAB:'A sea animal with a hard shell and claws.', LOBSTER:'A large sea animal with a hard shell and strong claws.',
+  SHRIMP:'A small shellfish that many people eat.', SNAIL:'A slow animal that can carry a shell.', LADYBUG:'A small beetle that is often red with black spots.',
+  SPIDER:'A small animal with eight legs that can spin a web.', WORM:'A long, small animal without legs that can live in soil.',
+  ZEBRA:'An animal like a horse with black and white stripes.', RHINO:'A large animal with thick skin and a horn on its nose.', CAMEL:'A desert animal with one or two humps.',
+  GOAT:'A farm animal that often has horns and a beard.', DEER:'A woodland animal whose males can have antlers.', MOOSE:'A very large animal with long legs and broad antlers.',
+  SQUIRREL:'A small tree-climbing animal with a bushy tail.', BAT:'A mammal with wings that often flies at night.', DINOSAUR:'A prehistoric animal that lived millions of years ago.',
+  BLUEBERRY:'A small blue fruit that grows on a bush.', CHERRY:'A small red fruit with a stone inside.', PEACH:'A fruit with soft, fuzzy skin and a large stone.',
+  MELON:'A large fruit with juicy flesh.', PINEAPPLE:'A tropical fruit with a prickly skin and leaves on top.', MANGO:'A sweet tropical fruit with a large stone.',
+  KIWI:'A small fruit with fuzzy brown skin and green flesh.', TOMATO:'A juicy red fruit often used in salads.', ONION:'A vegetable with layers that can make your eyes water.',
+  CORN:'Yellow kernels that grow on a cob.', PEPPER:'A crisp vegetable that can be red, yellow or green.', CUCUMBER:'A long green vegetable often used in salads.',
+  BROCCOLI:'A green vegetable that looks like little trees.', MUSHROOM:'A fungus that often has a cap and a stem.', COOKIE:'A small, sweet baked treat.',
+  CHOCOLATE:'A sweet food made from cocoa.', CANDY:'Sweet treats often sold in wrappers.', BURGER:'A round bun with a cooked patty inside.',
+  FRIES:'Pieces of potato that are cooked until crisp.', HOTDOG:'A sausage served in a long bun.', PASTA:'Food made from dough, such as spaghetti or macaroni.',
+  SOUP:'A warm liquid meal usually eaten with a spoon.', RICE:'Small white or brown grains that are cooked and eaten.', HONEY:'A sweet food made by bees.',
+  COFFEE:'A drink made from roasted beans.', TEA:'A drink made by soaking leaves in hot water.', JUICE:'A drink made from squeezed fruit or vegetables.',
+  POPCORN:'Kernels that pop when heated.', NUT:'A hard-shelled fruit with an edible kernel.', ICECREAM:'A sweet frozen dessert that can be served in a cone.',
+  TRAM:'A vehicle that runs on rails along city streets.', HELICOPTER:'An aircraft with large spinning blades on top.', SHIP:'A large vessel that sails on the sea.',
+  MOTORBIKE:'A vehicle with an engine and usually two wheels.', TRACTOR:'A powerful vehicle often used on a farm.', TRUCK:'A large vehicle used to carry goods.',
+  AMBULANCE:'An emergency vehicle that carries sick or injured people.', ROCKET:'A vehicle that can be launched into space.', SCOOTER:'A two-wheeled vehicle you stand on and push with your foot.',
+  CASTLE:'A large fortified building where royalty may live.', BRIDGE:'A structure that lets people cross over water.', HOSPITAL:'A place where sick or injured people receive treatment.',
+  SHOP:'A place where you can buy things.', FACTORY:'A building where goods are made, often using machines.', SOFA:'A piece of furniture where several people can sit.',
+  LAMP:'An object that gives light in a room.', LOCK:'A mechanism that keeps something closed until it is opened.', TOILET:'Something you sit on when you need the bathroom.',
+  SHOWER:'A place where you wash under running water.', BATH:'A large container you fill with water and sit in to wash.', MIRROR:'You can see your reflection in this.',
+  CUP:'A small drinking vessel that often has a handle.', GLASS:'A transparent drinking vessel.', FORK:'An eating utensil with several prongs.',
+  SPOON:'An eating utensil useful for soup.', KNIFE:'A tool with a sharp blade used for cutting.', PLATE:'A flat dish you put food on.', BOTTLE:'A container with a narrow neck that can hold a drink.',
+  PALM:'A tree with a long trunk and large leaves, often found in warm places.', TULIP:'A flower that often grows from a bulb in spring.',
+  SUNFLOWER:'A tall flower with yellow petals and a dark centre.', CACTUS:'A plant that can have spines and needs little water.', LEAF:'A green part that grows on many plants and trees.',
+  GRASS:'Green blades that often grow on lawns.', STONE:'A hard piece of rock.', PEN:'A writing tool that uses ink.', RULER:'A straight tool used to measure length.',
+  BAG:'A container used to carry things.', COMPUTER:'An electronic machine used for work, writing and games.', TV:'A screen used to watch films and programmes.',
+  CAMERA:'A device used to take photographs.', RADIO:'A device used to listen to broadcasts.', DRUM:'An instrument you hit to make rhythms.',
+  VIOLIN:'A string instrument often played with a bow.', TRUMPET:'A brass wind instrument with three valves.', MICROPHONE:'A device that picks up your voice or other sounds.',
+  HEADPHONES:'Equipment worn over or in your ears to listen to sound.', MUSIC:'Sounds and rhythms arranged into songs or tunes.',
+  FOOTBALL:'A game in which two teams try to kick a ball into a goal.', BASKETBALL:'A game in which teams try to throw a ball through a hoop.',
+  TENNIS:'A game where players hit a ball over a net with rackets.', SKI:'A long, narrow piece of equipment used to glide on snow.',
+  SKATE:'A boot with a blade underneath for gliding on ice.', TROPHY:'An object awarded to the winner of a competition.', MEDAL:'An award often worn on a ribbon around the neck.',
+  DICE:'Small cubes with dots used in games.', BALLOON:'A thin bag filled with air and used as a decoration.', GIFT:'Something you give someone, often wrapped.',
+  LANTERN:'A light in a container that can be carried or hung up.', MOUTH:'The part of your body used for eating and speaking.', TONGUE:'A movable part inside your mouth that helps you taste.',
+  BONE:'A hard part of the skeleton.', BRAIN:'The organ inside your head that helps you think.', BABY:'A very young child.', CHILD:'A young person who is not yet an adult.',
+  MAN:'An adult male person.', WOMAN:'An adult female person.', BOY:'A male child.', GIRL:'A female child.', KING:'A male monarch who may wear a crown.',
+  PRINCESS:'A female member of a royal family who is not a queen.', TEACHER:'A person who helps pupils learn.', DOCTOR:'A person who examines and treats sick people.',
+  FIREMAN:'A person who puts out fires and helps in emergencies.', GHOST:'A figure in stories often shown as a floating sheet.', WITCH:'A character in stories who can use magic.',
+  ROBOT:'A machine that can carry out tasks automatically.', FAIRY:'A small magical character from stories, often with wings.',
+  CAP:'A soft hat that often has a peak at the front.', BOOT:'A tall shoe that can protect against rain and mud.', TROUSERS:'Clothing that covers both legs.',
+  DRESS:'A piece of clothing that hangs down over the legs.', JACKET:'An outer layer of clothing worn over other clothes.', GLOVE:'A hand covering with separate spaces for the fingers.',
+  SCARF:'A long piece of fabric worn around the neck.', CROWN:'A royal head ornament worn by a monarch.', RING:'A circular piece of jewellery often worn on a finger.',
+  MAP:'A drawing that shows where places are.', FLAG:'A piece of cloth with colours and symbols that may represent a country.', ANCHOR:'A heavy object that holds a boat in place.',
+  HAMMER:'A tool used to hit nails.', SAW:'A tool with teeth used to cut wood.', LADDER:'A tool with steps that helps you climb up.',
+  MAGNET:'An object that can attract iron.', BOMB:'An object made to explode.', SWORD:'A long weapon with a sharp blade.', SHIELD:'A protective plate carried for defence.',
+  TELESCOPE:'An instrument that makes distant objects in the sky appear closer.', PLANET:'A large object in space that travels around a star.',
+  UFO:'An abbreviation for an unidentified flying object.', CALENDAR:'It shows days, weeks and months.', MONEY:'Used to pay for goods and services.',
+  COIN:'A round piece of metal used for payment.', LETTER:'A written message that can be sent in an envelope.', PARCEL:'Something wrapped up to be sent or given to someone.',
+  BATTERY:'A small source of power used in many devices.', SNOWMAN:'A figure made of snow, often with a carrot nose.', SOAP:'Used with water to wash your hands or body.',
+  SPONGE:'A soft object that soaks up water and is used for cleaning.', BROOM:'A tool with bristles used for sweeping.'
+});
+
+Object.assign(HINTS.no, {
+  BØTTE:'En beholder med hank som du kan bære vann i.',
+  MOTORBÅT:'Et fartøy med motor som kjører på vannet.',
+  LARVE:'Et ungt insekt som kan bli til en sommerfugl.',
+  KRABBE:'Et skalldyr med klør som ofte beveger seg sidelengs.',
+  TÅRN:'En høy, smal bygning eller del av en bygning.',
+  GARNNØSTE:'Tråd som er rullet sammen til en ball og brukes til strikking.',
+  TÅTEFLASKE:'En beholder med smokk som små barn kan drikke fra.',
+  BESTIKK:'Fellesnavn for kniv, gaffel og skje.',
+  LYKT:'En lyskilde som ofte kan bæres eller henges opp.',
+  JORDKLODEN:'Planeten vi bor på.',
+  BLEKKSPRUT:'Et sjødyr med lange armer og myk kropp.',
+  TROMPET:'Et blåseinstrument av metall med tre ventiler.',
+  HANSKE:'Et håndplagg med plass til hver finger.',
+  PEANØTT:'En spiselig belgfrukt med to deler i et lyst skall.',
+  VANNMELON:'En stor frukt med grønt skall, rødt fruktkjøtt og svarte frø.',
+  SPIRE:'En liten, ny plante som vokser fra et frø.',
+  GRANTRE:'Et bartre med nåler som mange pynter til jul.'
+});
+Object.assign(HINTS.en, {
+  CATERPILLAR:'A young insect that can become a butterfly.',
+  BABYBOTTLE:'A container with a teat that a small child can drink from.',
+  CUTLERY:'The knives, forks and spoons used for eating.',
+  PEANUT:'An edible legume with two halves inside a light-coloured shell.',
+  WATERMELON:'A large fruit with green skin, red flesh and black seeds.',
+  SPROUT:'A small new plant growing from a seed.'
+});
+
+function generateHints() {
+  const cells = S.grid.flat().filter(c => c.t === 'clue');
+  const hints = HINTS[S.lang === 'en' ? 'en' : 'no'];
+  const missing = [];
+  let added = 0, kept = 0;
+  let nextNum = Math.max(0, ...S.grid.flat().map(c => parseInt(c.num, 10) || 0));
+  for (const cell of cells) {
+    if (cell.hint) { kept++; continue; }
+    const word = (cell.word || '').trim().toUpperCase();
+    if (!word || !Object.hasOwn(hints, word)) {
+      missing.push(word || '(ukjent løsningsord)');
+      continue;
+    }
+    cell.hint = hints[word];
+    if (!cell.num) cell.num = String(++nextNum);
+    added++;
+  }
+  render();
+  const status = $('hintStatus');
+  status.style.display = 'block';
+  status.className = 'status' + (missing.length || !cells.length ? ' warn' : '');
+  status.textContent = cells.length
+    ? `${added} hint lagt til.${kept ? ` ${kept} eksisterende hint beholdt.` : ''}${missing.length ? ` Mangler hint for: ${missing.join(', ')}. Legg dem inn med «Hint» under «Valgt rute».` : ''}`
+    : 'Ingen bilderuter funnet. Generer et kryssord først.';
+}
+
 /* Enkel dialog som erstatter prompt() */
 function ask(label, value) {
   return new Promise(resolve => {
@@ -697,6 +1151,8 @@ function ask(label, value) {
 $('btnRandom').onclick = generateRandom;
 $('btnGen').onclick = generate;
 $('btnRegen').onclick = generate;
+$('btnAutoHints').onclick = generateHints;
+$('btnPrintVariants').onclick = printVariants;
 $('file').onchange = e => { if (e.target.files[0]) setImage(e.target.files[0]); e.target.value = ''; };
 $('btnRemoveImg').onclick = () => { const c = selCell(); if (c) { c.img = ''; render(); } };
 $('btnFitCell').onclick = () => { const c = selCell(); if (c) { c.fit = (c.fit || S.fit) === 'contain' ? 'cover' : 'contain'; render(); } };
@@ -716,6 +1172,7 @@ $('btnHint').onclick = async () => {
   const c = selCell(); if (!c || c.t !== 'clue') { alert('Velg en bilderute først.'); return; }
   const v = await ask('Hint for ruten – vises under kryssordet (tomt felt = fjern)', c.hint);
   if (v === null) return;
+  $('hintStatus').style.display = 'none';
   c.hint = v;
   if (c.hint && !c.num) {
     const max = Math.max(0, ...S.grid.flat().map(x => parseInt(x.num) || 0));
@@ -723,7 +1180,7 @@ $('btnHint').onclick = async () => {
   }
   render();
 };
-$('lang').onchange = e => { S.words = $('words').value; S.lang = e.target.value; syncControls(); save(); };
+$('lang').onchange = e => { S.words = $('words').value; S.lang = e.target.value; $('hintStatus').style.display = 'none'; syncControls(); save(); };
 $('letterBank').onchange = e => { S.letterBank = e.target.value; renderLetters(); save(); };
 $('showNums').onchange = e => { S.showNums = e.target.checked; render(); };
 $('fit').onchange = e => { S.fit = e.target.value; S.grid.forEach(r => r.forEach(c => c.fit = '')); render(); };
@@ -735,6 +1192,7 @@ $('btnNum').onclick = async () => { const c = selCell(); if (c) { const v = awai
 $('btnNew').onclick = () => {
   const r = Math.min(40, Math.max(2, +$('rows').value || 8)), c = Math.min(40, Math.max(2, +$('cols').value || 10));
   if (!confirm('Dette tømmer hele rutenettet. Fortsette?')) return;
+  $('hintStatus').style.display = 'none';
   S.rows = r; S.cols = c; S.grid = makeGrid(r, c); sel = null; syncControls(); render();
 };
 $('size').oninput = e => { S.size = +e.target.value; applySize(); save(); };
